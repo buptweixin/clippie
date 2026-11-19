@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clippie</title>
+    <style>
+      body { font-family: system-ui, sans-serif; margin: 0; }
+      .bubble {
+        background: #fffbe6; border: 2px solid #333; border-radius: 12px;
+        padding: 12px 14px; max-width: 320px;
+      }
+      .actions { display: flex; gap: 8px; margin-top: 10px; }
+      button { cursor: pointer; }
+      .degradation { color: #8a6d00; font-size: 12px; }
+    </style>
+  </head>
+  <body>
+    <!-- Non-modal bubble: one artifact, three actions, nothing else.
+         Insert / Another version / Dismiss — per .kiro/steering/product.md -->
+    <div class="bubble" id="bubble" hidden>
+      <div id="artifact"></div>
+      <p class="degradation" id="degradation" hidden></p>
+      <div class="actions">
+        <button id="insert">Insert at cursor</button>
+        <button id="another">Another version</button>
+        <button id="dismiss">Dismiss</button>
+      </div>
+      <label style="display:block;margin-top:8px;font-size:12px">
+        <input type="checkbox" id="classic" /> Classic mode (1997 energy)
+      </label>
+    </div>
+    <script src="bubble.js"></script>
+  </body>
+</html>
