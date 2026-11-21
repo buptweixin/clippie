@@ -27,6 +27,13 @@ export interface PermissionReport {
   nextStep?: string;
 }
 
+export const MAC_SETTINGS_URLS = {
+  accessibility:
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility",
+  screenCapture:
+    "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture",
+} as const;
+
 export function macNextStep(r: PermissionReport): string | undefined {
   if (r.accessibility !== "granted") {
     return "Open System Settings → Privacy & Security → Accessibility and enable Clippie, then press Verify.";
@@ -37,6 +44,31 @@ export function macNextStep(r: PermissionReport): string | undefined {
   return undefined;
 }
 
+export function buildMacPermissionReport(
+  accessibilityGranted: boolean,
+  screenCaptureGranted: boolean,
+): PermissionReport {
+  const report: PermissionReport = {
+    platform: "darwin",
+    accessibility: accessibilityGranted ? "granted" : "denied",
+    screenCapture: screenCaptureGranted ? "granted" : "denied",
+  };
+  report.nextStep = macNextStep(report);
+  return report;
+}
+
 export function windowsDegradation(targetIsElevated: boolean): PermissionState {
   return targetIsElevated ? "degraded-clipboard-only" : "granted";
+}
+
+export function buildWindowsPermissionReport(targetIsElevated: boolean): PermissionReport {
+  const accessibility = windowsDegradation(targetIsElevated);
+  return {
+    platform: "win32",
+    accessibility,
+    screenCapture: "granted",
+    nextStep: targetIsElevated
+      ? "Target window is elevated (UIPI). Clippie will use L3 clipboard paste honestly."
+      : undefined,
+  };
 }
