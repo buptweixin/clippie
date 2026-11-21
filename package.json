@@ -1,1 +1,22 @@
-{"dependencies":{"electron":"^33.0.0"},"description":"Clippie — the classic office assistant, resurrected as a multimodal desktop companion (Kiroween 2026, Resurrection track)","devDependencies":{"@types/node":"^22.0.0","typescript":"^5.6.0","vitest":"^2.1.0"},"license":"MIT","main":"dist/main/main.js","name":"clippie","scripts":{"build":"tsc -b","dev":"tsc -b && electron .","test":"vitest run","typecheck":"tsc -b --noEmit"},"version":"0.1.0"}
+{
+  "name": "clippie",
+  "version": "0.1.0",
+  "description": "Clippie — the classic office assistant, resurrected as a multimodal desktop companion (Kiroween 2026, Resurrection track)",
+  "license": "MIT",
+  "main": "dist/main/main.js",
+  "scripts": {
+    "build": "tsc -b && node -e \"require('fs').copyFileSync('src/renderer/bubble.html','dist/renderer/bubble.html')\"",
+    "dev": "npm run build && electron .",
+    "test": "vitest run",
+    "typecheck": "tsc -b --noEmit",
+    "sidecar:build:mac": "swiftc -parse-as-library -O native/macos/Sidecar.swift -o dist/clippie-sidecar"
+  },
+  "dependencies": {
+    "electron": "^33.0.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}

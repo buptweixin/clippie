@@ -38,8 +38,12 @@ export function detectStuck(events: PerceptionEvent[]): StuckDetection | null {
   const by = (k: PerceptionEvent["kind"]) => events.filter((e) => e.kind === k);
 
   // Blank page: long idle with (almost) no edits in the window.
-  const idle = by("idle").some((e) => e.detail === String(IDLE_MS));
-  if (idle && by("edit").length <= 1) {
+  const idle = by("idle").some((e) => {
+    const ms = Number(e.detail);
+    return Number.isFinite(ms) && ms >= IDLE_MS;
+  });
+  const edits = by("edit");
+  if (idle && edits.length <= 1) {
     return { type: "blank-page", confidence: 0.75 };
   }
 
@@ -60,6 +64,14 @@ export function detectStuck(events: PerceptionEvent[]): StuckDetection | null {
   // Long dwell on a passage in another window: offer a summary of it.
   if (by("selection-dwell").length >= 2) {
     return { type: "needs-summary", confidence: 0.65 };
+  }
+
+  // Scattered edits across multiple paragraphs with repeated pauses:
+  // suggests the writer lacks a clear section outline.
+  const distinctSpots = new Set(edits.map((e) => e.detail).filter(Boolean));
+  const pauses = by("idle").length + by("selection-dwell").length;
+  if (edits.length >= 4 && distinctSpots.size >= 3 && pauses >= 2) {
+    return { type: "no-outline", confidence: 0.7 };
   }
 
   return null;

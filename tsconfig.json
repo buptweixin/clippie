@@ -1,1 +1,13 @@
-{"compilerOptions":{"lib":["ES2022","DOM"],"module":"commonjs","moduleResolution":"node","outDir":"dist","rootDir":".","strict":true,"target":"ES2022"},"include":["src"]}
+{
+  "compilerOptions": {
+    "lib": ["ES2022", "DOM"],
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "outDir": "dist",
+    "rootDir": "src",
+    "skipLibCheck": true,
+    "strict": true,
+    "target": "ES2022"
+  },
+  "include": ["src"]
+}

@@ -7,19 +7,27 @@
       body { font-family: system-ui, sans-serif; margin: 0; }
       .bubble {
         background: #fffbe6; border: 2px solid #333; border-radius: 12px;
-        padding: 12px 14px; max-width: 320px;
+        padding: 12px 14px; max-width: 340px;
       }
+      .rationale { color: #555; font-size: 12px; margin: 0 0 6px; }
+      .classic-banner { font-style: italic; font-size: 12px; margin: 0 0 6px; color: #333; }
       .actions { display: flex; gap: 8px; margin-top: 10px; }
       button { cursor: pointer; }
-      .degradation { color: #8a6d00; font-size: 12px; }
+      .degradation { color: #8a6d00; font-size: 12px; margin: 6px 0 0; }
+      .notice { color: #444; font-size: 12px; margin: 6px 0 0; }
     </style>
   </head>
   <body>
     <!-- Non-modal bubble: one artifact, three actions, nothing else.
          Insert / Another version / Dismiss — per .kiro/steering/product.md -->
     <div class="bubble" id="bubble" hidden>
+      <p class="classic-banner" id="classic-banner" hidden>
+        It looks like you're trying to write a document…
+      </p>
+      <p class="rationale" id="rationale" hidden></p>
       <div id="artifact"></div>
       <p class="degradation" id="degradation" hidden></p>
+      <p class="notice" id="notice" hidden></p>
       <div class="actions">
         <button id="insert">Insert at cursor</button>
         <button id="another">Another version</button>

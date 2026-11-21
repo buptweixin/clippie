@@ -5,17 +5,17 @@
 - [x] Stuck detector over synthetic event streams + unit tests
 - [x] Agent loop with thresholds, silence window, feedback weights
 - [x] Bubble UI (non-modal, 3 actions) wired to the loop
-- [ ] Mock DocumentAdapter + end-to-end loop test
+- [x] Mock DocumentAdapter + end-to-end loop test
 
 ## Milestone 2 — Execution layer (parallel spikes, see docs/devin-plan.md)
-- [ ] L3 clipboard adapter (save/restore user clipboard, paste at cursor)
+- [x] L3 clipboard adapter (save/restore user clipboard, paste at cursor)
 - [ ] L1 Google Docs path (browser extension content script)
 - [ ] L1 Word path (Office JS add-in spike)
-- [ ] macOS spike: Swift sidecar, AX read focused element/selection, set value
+- [ ] macOS spike: Swift sidecar, AX read focused element/selection, set value + undo + NDJSON stdio bridge (`native/macos/Sidecar.swift`, `src/adapters/SidecarDocumentAdapter.ts`)
       — acceptance: read→insert→undo in TextEdit and Word
 - [ ] Windows spike: C# UIA TextPattern, same four adapter methods
       — acceptance: same conformance suite as macOS
-- [ ] Adapter conformance test suite running on macOS + Windows CI
+- [ ] Adapter conformance test suite (`tests/adapterConformance.ts`) running on macOS + Windows CI
 
 ## Milestone 3 — Perception & permissions
 - [ ] Trigger-time screenshot + on-device OCR (Apple Vision / Windows OCR)
