@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentLoop, type Bubble, type BubbleNotice, type ModelClient } from "../src/agent/loop";
 import { MockDocumentAdapter } from "../src/adapters/MockDocumentAdapter";
+import { SnapshotDeduper } from "../src/perception/perceptualHash";
 import type { PerceptionEvent } from "../src/perception/stuckDetector";
 
 const ev = (kind: PerceptionEvent["kind"], detail?: string): PerceptionEvent => ({
@@ -167,5 +168,68 @@ describe("AgentLoop end-to-end", () => {
 
     adapter.emitOutcome("mock:1", "deleted");
     expect(loop.getStats("missing-transition", "AdminApp").weight).toBeCloseTo(0.7, 5);
+  });
+
+  it("deduplicates near-identical trigger snapshots and prevents concurrent re-entry", async () => {
+    const adapter = new MockDocumentAdapter({
+      appName: "Word",
+      initialText: "Section 2 draft.",
+    });
+    let currentHash = "00ff00ff00ff00ff";
+    let resolveOffer: ((c: "insert" | "another" | "dismiss") => void) | null = null;
+
+    const proposeArtifact = vi.fn(async ({ referenceText, imageCropBase64 }) => ({
+      text: `Bridge (${referenceText}, ${imageCropBase64})`,
+      rationale: "Snapshot test",
+    }));
+
+    const loop = new AgentLoop(
+      adapter,
+      { proposeArtifact },
+      {
+        offer: () =>
+          new Promise((resolve) => {
+            resolveOffer = resolve;
+          }),
+      },
+      Date.now,
+      {
+        deduper: new SnapshotDeduper({ maxHammingDistance: 4 }),
+        snapshotProvider: {
+          captureSnapshot: async () => ({
+            ocrText: "PDF excerpt",
+            imageCropBase64: "JPEG_CROP",
+            dHashHex: currentHash,
+          }),
+        },
+      },
+    );
+
+    const firstRun = loop.onEvents(transitionEvents, "Word");
+    await vi.waitFor(() => expect(resolveOffer).not.toBeNull());
+    expect(loop.isBusy()).toBe(true);
+
+    // Concurrent trigger while offer is open is ignored
+    await loop.onEvents(transitionEvents, "Word");
+    expect(proposeArtifact).toHaveBeenCalledTimes(1);
+
+    const resolveFirst = resolveOffer!;
+    resolveOffer = null;
+    resolveFirst("insert");
+    await firstRun;
+    expect(loop.isBusy()).toBe(false);
+
+    // Near-identical snapshot (1 bit diff) is suppressed by SnapshotDeduper
+    currentHash = "00ff00ff00ff00fe";
+    await loop.onEvents(transitionEvents, "Word");
+    expect(proposeArtifact).toHaveBeenCalledTimes(1);
+
+    // Distinct snapshot (> 4 bits diff) triggers a fresh model call
+    currentHash = "ffff0000ffff0000";
+    const thirdRun = loop.onEvents(transitionEvents, "Word");
+    await vi.waitFor(() => expect(resolveOffer).not.toBeNull());
+    expect(proposeArtifact).toHaveBeenCalledTimes(2);
+    resolveOffer!("dismiss");
+    await thirdRun;
   });
 });

@@ -1,6 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   MAC_SETTINGS_URLS,
+  MacPermissionWizard,
   buildMacPermissionReport,
   buildWindowsPermissionReport,
   macNextStep,
@@ -36,5 +37,30 @@ describe("permissions", () => {
     const normal = buildWindowsPermissionReport(false);
     expect(normal.accessibility).toBe("granted");
     expect(normal.nextStep).toBeUndefined();
+  });
+
+  it("refuses to mark macOS permissions verified until live test read passes", async () => {
+    const openUrl = vi.fn();
+    let liveReady = false;
+
+    const wizard = new MacPermissionWizard({
+      checkGrants: async () => ({ accessibility: true, screenRecording: true }),
+      liveTestRead: async () => ({
+        axReadable: true,
+        screenCapturable: liveReady,
+      }),
+      openUrl,
+    });
+
+    const failed = await wizard.verify();
+    expect(failed.verified).toBe(false);
+    expect(failed.settingsUrl).toBe(MAC_SETTINGS_URLS.screenCapture);
+    expect(failed.failureReason).toContain("Screen Recording");
+
+    liveReady = true;
+    const passed = await wizard.verify();
+    expect(passed.verified).toBe(true);
+    expect(passed.report.accessibility).toBe("granted");
+    expect(passed.report.screenCapture).toBe("granted");
   });
 });

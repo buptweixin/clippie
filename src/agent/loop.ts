@@ -1,12 +1,19 @@
 import { detectStuck, type PerceptionEvent, type StuckType } from "../perception/stuckDetector";
+import {
+  SnapshotDeduper,
+  computeTextSimHash,
+  parseHashHex,
+} from "../perception/perceptualHash";
 import type { AdapterLevel, DocumentAdapter, InsertOutcome } from "../adapters/DocumentAdapter";
 
 /**
  * The agent loop: observe → decide → act → learn.
  *
- * - observe: pull a semantic snapshot (context + reference text) — only
- *   after the local stuck detector fires, never on a timer against the LLM.
- * - decide: confidence + per-type/per-app feedback weights + silence window.
+ * - observe: pull a semantic snapshot (context + reference text + optional
+ *   active-window crop) — only after the local stuck detector fires, never on
+ *   a timer against the LLM.
+ * - decide: confidence + per-type/per-app feedback weights + silence window +
+ *   perceptual-hash snapshot deduplication + single-flight guard.
  * - act: ask the model for ONE finished artifact and offer it in the bubble.
  * - learn: the user's keep/edit/delete/dismiss behaviour tunes the weights.
  */
@@ -18,14 +25,28 @@ export interface Artifact {
   degradationNote?: string;
 }
 
+export interface ProposeArtifactInput {
+  stuckType: StuckType;
+  context: string;
+  referenceText?: string;
+  imageCropBase64?: string;
+  attempt?: number;
+  previousTexts?: string[];
+}
+
 export interface ModelClient {
-  proposeArtifact(input: {
-    stuckType: StuckType;
-    context: string;
-    referenceText?: string;
-    attempt?: number;
-    previousTexts?: string[];
-  }): Promise<Artifact>;
+  proposeArtifact(input: ProposeArtifactInput): Promise<Artifact>;
+}
+
+export interface TriggerSnapshot {
+  ocrText?: string;
+  imageCropBase64?: string;
+  /** 16-char hex 64-bit perceptual dHash from the OS sidecar, if available. */
+  dHashHex?: string;
+}
+
+export interface SnapshotProvider {
+  captureSnapshot(): Promise<TriggerSnapshot | null>;
 }
 
 export interface BubbleNotice {
@@ -47,6 +68,8 @@ export interface TypeStats {
 export interface AgentLoopOptions {
   classicMode?: boolean;
   maxRegenerations?: number;
+  snapshotProvider?: SnapshotProvider;
+  deduper?: SnapshotDeduper;
 }
 
 const BASE_THRESHOLD = 0.6;
@@ -57,7 +80,10 @@ export class AgentLoop {
   private stats = new Map<string, TypeStats>();
   private classicMode: boolean;
   private maxRegenerations: number;
+  private snapshotProvider?: SnapshotProvider;
+  private deduper?: SnapshotDeduper;
   private globalMutedUntil = 0;
+  private inFlight = false;
 
   constructor(
     private adapter: DocumentAdapter,
@@ -68,6 +94,8 @@ export class AgentLoop {
   ) {
     this.classicMode = options.classicMode ?? false;
     this.maxRegenerations = options.maxRegenerations ?? DEFAULT_MAX_REGENERATIONS;
+    this.snapshotProvider = options.snapshotProvider;
+    this.deduper = options.deduper;
   }
 
   private statKey(appName: string, t: StuckType): string {
@@ -92,6 +120,10 @@ export class AgentLoop {
     return this.classicMode;
   }
 
+  isBusy(): boolean {
+    return this.inFlight;
+  }
+
   mute(durationMs: number = SILENCE_MS): void {
     this.globalMutedUntil = this.now() + durationMs;
   }
@@ -113,6 +145,7 @@ export class AgentLoop {
 
   /** Feed one window of perception events; acts only if warranted. */
   async onEvents(events: PerceptionEvent[], appName = "default"): Promise<void> {
+    if (this.inFlight) return;
     if (!this.classicMode && this.now() < this.globalMutedUntil) return;
 
     const hit = detectStuck(events);
@@ -124,85 +157,104 @@ export class AgentLoop {
       if (hit.confidence * s.weight < BASE_THRESHOLD) return;
     }
 
-    const ctx = await this.adapter.getContext();
-    const effectiveApp = appName === "default" ? ctx.appName : appName;
-    const effectiveStats = this.stat(effectiveApp, hit.type);
-    if (!this.classicMode) {
-      if (this.now() < effectiveStats.silencedUntil) return;
-      if (hit.confidence * effectiveStats.weight < BASE_THRESHOLD) return;
-    }
+    this.inFlight = true;
+    try {
+      const ctx = await this.adapter.getContext();
+      const effectiveApp = appName === "default" ? ctx.appName : appName;
+      const effectiveStats = this.stat(effectiveApp, hit.type);
+      if (!this.classicMode) {
+        if (this.now() < effectiveStats.silencedUntil) return;
+        if (hit.confidence * effectiveStats.weight < BASE_THRESHOLD) return;
+      }
 
-    const previousTexts: string[] = [];
-    let attempt = 1;
-    let artifact: Artifact | null = null;
-    let choice: "insert" | "another" | "dismiss" = "dismiss";
+      const snap = (await this.snapshotProvider?.captureSnapshot()) ?? null;
+      if (this.deduper) {
+        const hash = snap?.dHashHex
+          ? parseHashHex(snap.dHashHex)
+          : computeTextSimHash(
+              `${ctx.textBeforeCursor}\n${ctx.visibleReferenceText ?? snap?.ocrText ?? ""}`,
+            );
+        const dedupeRes = this.deduper.checkAndRecord(`${effectiveApp}:${hit.type}`, hash);
+        if (dedupeRes.duplicate && !this.classicMode) {
+          return;
+        }
+      }
 
-    while (attempt <= this.maxRegenerations) {
-      artifact = await this.model.proposeArtifact({
-        stuckType: hit.type,
-        context: ctx.textBeforeCursor,
-        referenceText: ctx.visibleReferenceText,
-        attempt,
-        previousTexts: previousTexts.length > 0 ? [...previousTexts] : undefined,
-      });
+      const referenceText = ctx.visibleReferenceText ?? snap?.ocrText;
+      const previousTexts: string[] = [];
+      let attempt = 1;
+      let artifact: Artifact | null = null;
+      let choice: "insert" | "another" | "dismiss" = "dismiss";
 
-      const offered: Artifact = {
-        ...artifact,
-        level: artifact.level ?? this.adapter.level,
-        degradationNote:
-          artifact.degradationNote ??
-          (this.adapter.level === "L3"
-            ? "Will insert by paste — this window doesn't expose a writable accessibility tree."
-            : undefined),
-      };
-
-      choice = await this.bubble.offer(offered, hit.type);
-      if (choice !== "another") break;
-
-      previousTexts.push(artifact.text);
-      attempt += 1;
-    }
-
-    if (choice === "dismiss") {
-      effectiveStats.consecutiveDismissals += 1;
-      if (effectiveStats.consecutiveDismissals >= 3) {
-        effectiveStats.weight *= 0.85;
-        effectiveStats.silencedUntil = this.now() + SILENCE_MS;
-        effectiveStats.consecutiveDismissals = 0;
-        await this.bubble.notify?.({
-          kind: "silenced",
-          message: `Going quiet for 30 minutes on "${hit.type}" in ${effectiveApp}.`,
+      while (attempt <= this.maxRegenerations) {
+        artifact = await this.model.proposeArtifact({
+          stuckType: hit.type,
+          context: ctx.textBeforeCursor,
+          referenceText,
+          imageCropBase64: snap?.imageCropBase64,
+          attempt,
+          previousTexts: previousTexts.length > 0 ? [...previousTexts] : undefined,
         });
-      } else {
-        effectiveStats.weight *= 0.9;
+
+        const offered: Artifact = {
+          ...artifact,
+          level: artifact.level ?? this.adapter.level,
+          degradationNote:
+            artifact.degradationNote ??
+            (this.adapter.level === "L3"
+              ? "Will insert by paste — this window doesn't expose a writable accessibility tree."
+              : undefined),
+        };
+
+        choice = await this.bubble.offer(offered, hit.type);
+        if (choice !== "another") break;
+
+        previousTexts.push(artifact.text);
+        attempt += 1;
       }
-      return;
-    }
 
-    if (choice === "another" || !artifact) {
-      // Exhausted regeneration attempts without inserting or dismissing.
-      return;
-    }
+      if (choice === "dismiss") {
+        effectiveStats.consecutiveDismissals += 1;
+        if (effectiveStats.consecutiveDismissals >= 3) {
+          effectiveStats.weight *= 0.85;
+          effectiveStats.silencedUntil = this.now() + SILENCE_MS;
+          effectiveStats.consecutiveDismissals = 0;
+          await this.bubble.notify?.({
+            kind: "silenced",
+            message: `Going quiet for 30 minutes on "${hit.type}" in ${effectiveApp}.`,
+          });
+        } else {
+          effectiveStats.weight *= 0.9;
+        }
+        return;
+      }
 
-    const result = await this.adapter.insertAtCursor(artifact.text);
-    if (!result.ok) return;
+      if (choice === "another" || !artifact) {
+        return;
+      }
 
-    if (result.degradationNote) {
-      await this.bubble.notify?.({
-        kind: "degraded",
-        message: result.degradationNote,
+      const result = await this.adapter.insertAtCursor(artifact.text);
+      if (!result.ok) return;
+
+      if (result.degradationNote) {
+        await this.bubble.notify?.({
+          kind: "degraded",
+          message: result.degradationNote,
+        });
+      }
+
+      if (!result.undoToken) return;
+      this.adapter.observeOutcome(result.undoToken, (o: InsertOutcome) => {
+        if (o === "kept") {
+          effectiveStats.weight = Math.min(1.3, effectiveStats.weight * 1.1);
+          effectiveStats.consecutiveDismissals = 0;
+        } else if (o === "deleted") {
+          effectiveStats.weight *= 0.7;
+        }
+        // "edited" is neutral: the user engaged, the artifact was a draft.
       });
+    } finally {
+      this.inFlight = false;
     }
-
-    if (!result.undoToken) return;
-    this.adapter.observeOutcome(result.undoToken, (o: InsertOutcome) => {
-      if (o === "kept") {
-        effectiveStats.weight = Math.min(1.3, effectiveStats.weight * 1.1);
-        effectiveStats.consecutiveDismissals = 0;
-      } else if (o === "deleted") {
-        effectiveStats.weight *= 0.7;
-      }
-      // "edited" is neutral: the user engaged, the artifact was a draft.
-    });
   }
 }

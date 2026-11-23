@@ -72,3 +72,93 @@ export function buildWindowsPermissionReport(targetIsElevated: boolean): Permiss
       : undefined,
   };
 }
+
+export interface VerificationResult {
+  verified: boolean;
+  report: PermissionReport;
+  settingsUrl?: string;
+  failureReason?: string;
+}
+
+export interface MacPermissionProbes {
+  checkGrants(): Promise<{ accessibility: boolean; screenRecording: boolean }>;
+  /**
+   * Live test read required by docs/permissions.md before the UI is allowed
+   * to claim the feature works.
+   */
+  liveTestRead(): Promise<{ axReadable: boolean; screenCapturable: boolean }>;
+  openUrl?(url: string): Promise<void> | void;
+}
+
+/**
+ * macOS TCC onboarding & verification wizard (Milestone 3).
+ * Never claims "verified" on preflight flags alone — executes a real live read.
+ */
+export class MacPermissionWizard {
+  constructor(private probes: MacPermissionProbes) {}
+
+  async inspect(): Promise<VerificationResult> {
+    const grants = await this.probes.checkGrants();
+    const report = buildMacPermissionReport(
+      grants.accessibility,
+      grants.screenRecording,
+    );
+    return {
+      verified: false,
+      report,
+      settingsUrl: this.pickSettingsUrl(report),
+    };
+  }
+
+  async openRequiredSettings(): Promise<string | undefined> {
+    const { settingsUrl } = await this.inspect();
+    if (settingsUrl) {
+      await this.probes.openUrl?.(settingsUrl);
+    }
+    return settingsUrl;
+  }
+
+  async verify(): Promise<VerificationResult> {
+    const grants = await this.probes.checkGrants();
+    if (!grants.accessibility || !grants.screenRecording) {
+      const report = buildMacPermissionReport(
+        grants.accessibility,
+        grants.screenRecording,
+      );
+      return {
+        verified: false,
+        report,
+        settingsUrl: this.pickSettingsUrl(report),
+        failureReason: "OS permission flags are not yet granted.",
+      };
+    }
+
+    const live = await this.probes.liveTestRead();
+    const report = buildMacPermissionReport(
+      live.axReadable,
+      live.screenCapturable,
+    );
+
+    if (!live.axReadable || !live.screenCapturable) {
+      return {
+        verified: false,
+        report,
+        settingsUrl: this.pickSettingsUrl(report),
+        failureReason: !live.axReadable
+          ? "Live Accessibility test read failed — restart the sidecar after enabling Accessibility."
+          : "Live Screen Recording capture failed — restart the sidecar after enabling Screen Recording.",
+      };
+    }
+
+    return {
+      verified: true,
+      report,
+    };
+  }
+
+  private pickSettingsUrl(report: PermissionReport): string | undefined {
+    if (report.accessibility !== "granted") return MAC_SETTINGS_URLS.accessibility;
+    if (report.screenCapture !== "granted") return MAC_SETTINGS_URLS.screenCapture;
+    return undefined;
+  }
+}

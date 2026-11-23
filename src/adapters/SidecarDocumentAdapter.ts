@@ -7,10 +7,13 @@ import type {
   InsertOutcome,
   InsertResult,
 } from "./DocumentAdapter";
+import type { SnapshotProvider, TriggerSnapshot } from "../agent/loop";
+import { OutcomeObserver } from "../perception/outcomeTracker";
 
 export interface SidecarPermissionStatus {
   accessibility: boolean;
   screenRecording: boolean;
+  targetIsElevated?: boolean;
 }
 
 export interface SidecarRequest {
@@ -21,7 +24,8 @@ export interface SidecarRequest {
     | "get_context"
     | "get_selection"
     | "insert_at_cursor"
-    | "undo";
+    | "undo"
+    | "capture_snapshot";
   params?: Record<string, unknown>;
 }
 
@@ -123,21 +127,48 @@ export class StdioSidecarTransport implements SidecarTransport {
 }
 
 /**
- * DocumentAdapter backed by an OS native sidecar (macOS AX / Windows UIA).
- * Surfaces honest L2→L3 degradation reported by the sidecar.
+ * DocumentAdapter + SnapshotProvider backed by an OS native sidecar
+ * (macOS AX+Vision / Windows UIA). Surfaces honest L2→L3 degradation.
  */
-export class SidecarDocumentAdapter implements DocumentAdapter {
+export class SidecarDocumentAdapter implements DocumentAdapter, SnapshotProvider {
   readonly level: AdapterLevel = "L2";
   private outcomeListeners = new Map<string, (o: InsertOutcome) => void>();
+  private insertedByToken = new Map<string, string>();
+  private observer: OutcomeObserver;
 
-  constructor(private transport: SidecarTransport) {}
+  constructor(
+    private transport: SidecarTransport,
+    observer?: OutcomeObserver,
+  ) {
+    this.observer = observer ?? new OutcomeObserver();
+  }
 
   async checkPermissions(): Promise<SidecarPermissionStatus> {
     const res = await this.transport.request("check_permissions");
     return {
       accessibility: Boolean(res.accessibility),
       screenRecording: Boolean(res.screenRecording),
+      targetIsElevated:
+        typeof res.targetIsElevated === "boolean"
+          ? res.targetIsElevated
+          : undefined,
     };
+  }
+
+  async captureSnapshot(): Promise<TriggerSnapshot | null> {
+    try {
+      const res = await this.transport.request("capture_snapshot");
+      return {
+        ocrText: typeof res.ocrText === "string" ? res.ocrText : undefined,
+        imageCropBase64:
+          typeof res.imageCropBase64 === "string"
+            ? res.imageCropBase64
+            : undefined,
+        dHashHex: typeof res.dHashHex === "string" ? res.dHashHex : undefined,
+      };
+    } catch {
+      return null;
+    }
   }
 
   async getContext(): Promise<DocumentContext> {
@@ -164,25 +195,49 @@ export class SidecarDocumentAdapter implements DocumentAdapter {
       res.level === "L1" || res.level === "L2" || res.level === "L3"
         ? res.level
         : "L2";
+    const ok = res.ok !== false;
+    const undoToken =
+      typeof res.undoToken === "string"
+        ? res.undoToken
+        : ok && level === "L3"
+          ? `sidecar-paste:${Date.now()}`
+          : undefined;
+    if (ok && undoToken) {
+      this.insertedByToken.set(undoToken, text);
+    }
     return {
-      ok: res.ok !== false,
+      ok,
       level,
       degradationNote:
         typeof res.degradationNote === "string" ? res.degradationNote : undefined,
-      undoToken: typeof res.undoToken === "string" ? res.undoToken : undefined,
+      undoToken,
     };
   }
 
   async undo(undoToken: string): Promise<boolean> {
+    if (undoToken.startsWith("sidecar-paste:")) return false;
     const res = await this.transport.request("undo", { undoToken });
     return Boolean(res.ok);
   }
 
   observeOutcome(undoToken: string, cb: (o: InsertOutcome) => void): void {
     this.outcomeListeners.set(undoToken, cb);
+    const inserted = this.insertedByToken.get(undoToken);
+    if (!inserted) return;
+    this.insertedByToken.delete(undoToken);
+    this.observer.watch(
+      inserted,
+      async () => {
+        const ctx = await this.getContext();
+        return `${ctx.textBeforeCursor}${ctx.textAfterCursor}`;
+      },
+      (outcome) => {
+        this.notifyOutcome(undoToken, outcome);
+      },
+    );
   }
 
-  /** Called by the perception daemon when an outcome window finishes. */
+  /** Called by the perception daemon or OutcomeObserver when an outcome window finishes. */
   notifyOutcome(undoToken: string, outcome: InsertOutcome): void {
     const cb = this.outcomeListeners.get(undoToken);
     if (!cb) return;
