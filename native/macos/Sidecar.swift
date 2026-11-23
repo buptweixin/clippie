@@ -1,20 +1,22 @@
-// Clippie macOS sidecar — demo core + NDJSON stdio IPC.
+// Clippie macOS sidecar — demo core + Vision OCR snapshot + NDJSON stdio IPC.
 //
 // Owns the TCC grants (Accessibility + Screen Recording) and implements
-// the L2 DocumentAdapter operations for the frontmost app:
+// the L2 DocumentAdapter + Milestone 3 trigger-time perception operations:
 //   - read the focused element's text and selection via AXUIElement
 //   - insert at the cursor by setting the AX value around the selection
 //     (snapshot-backed so undo restores the pre-insert value & range)
 //   - fall back to clipboard + synthetic Cmd-V when the AX tree of the
 //     target app is not writable (the L3 path, used honestly)
-//
-// Acceptance (Milestone 2): read → insert → undo in TextEdit and Word,
-// verified by the shared adapter conformance suite.
+//   - capture active-window screenshot on trigger only (ScreenCaptureKit),
+//     run fast on-device Apple Vision OCR, compute a 64-bit 9x8 dHash, and
+//     return a downscaled JPEG crop in memory (never written to disk)
 
 import ApplicationServices
 import AppKit
 import CoreGraphics
 import Foundation
+import ScreenCaptureKit
+import Vision
 
 // MARK: - AX helpers
 
@@ -76,7 +78,6 @@ let snapshots = SnapshotStore()
 
 // MARK: - DocumentAdapter (L2) operations
 
-/// getContext + getSelection: text around the cursor in the focused element.
 func readContext() -> (appName: String, before: String, selected: String, after: String)? {
     guard let el = focusedElement(),
           let value = stringAttr(el, kAXValueAttribute),
@@ -94,9 +95,6 @@ func readContext() -> (appName: String, before: String, selected: String, after:
     )
 }
 
-/// insertAtCursor (L2): save pre-insert snapshot, splice the artifact into
-/// the AX value at the selection, then place the cursor right after it.
-/// Returns nil when the element is not settable — caller degrades to L3.
 func insertViaAX(_ text: String) -> String? {
     guard let el = focusedElement(),
           let value = stringAttr(el, kAXValueAttribute),
@@ -144,8 +142,6 @@ func undoViaAX(_ token: String) -> Bool {
 
 // MARK: - L3 fallback: clipboard + synthetic paste
 
-/// insertAtCursor (L3): save the user's pasteboard, put the artifact on
-/// it, post a synthetic Cmd-V, then restore the original contents.
 func insertViaPasteboard(_ text: String) {
     let pb = NSPasteboard.general
     let saved = pb.string(forType: .string)
@@ -159,7 +155,6 @@ func insertViaPasteboard(_ text: String) {
         ev?.flags = .maskCommand
         ev?.post(tap: .cghidEventTap)
     }
-    // Restore after the target app has consumed the paste.
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
         pb.clearContents()
         if let saved { pb.setString(saved, forType: .string) }
@@ -173,7 +168,6 @@ struct SidecarInsertResult {
     let undoToken: String?
 }
 
-/// Adapter entry point: L2 first, honest degradation to L3.
 func insertAtCursor(_ text: String) -> SidecarInsertResult {
     if let token = insertViaAX(text) {
         return SidecarInsertResult(
@@ -190,6 +184,116 @@ func insertAtCursor(_ text: String) -> SidecarInsertResult {
         degradationNote: "Inserted by paste — this window doesn't expose a writable accessibility tree.",
         undoToken: nil
     )
+}
+
+// MARK: - Trigger-time active window capture + Apple Vision OCR + dHash
+
+func computeDHashHex(_ image: CGImage) -> String {
+    let cols = 9
+    let rows = 8
+    var pixels = [UInt8](repeating: 0, count: cols * rows)
+    let colorSpace = CGColorSpaceCreateDeviceGray()
+    guard let ctx = CGContext(
+        data: &pixels,
+        width: cols,
+        height: rows,
+        bitsPerComponent: 8,
+        bytesPerRow: cols,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.none.rawValue
+    ) else {
+        return String(repeating: "0", count: 16)
+    }
+    ctx.interpolationQuality = .low
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: cols, height: rows))
+
+    var hash: UInt64 = 0
+    var bit: UInt64 = 0
+    for r in 0..<rows {
+        for c in 0..<(cols - 1) {
+            if pixels[r * cols + c] < pixels[r * cols + c + 1] {
+                hash |= (1 << bit)
+            }
+            bit += 1
+        }
+    }
+    return String(format: "%016llx", hash)
+}
+
+func recognizeTextFast(_ image: CGImage) -> String {
+    var lines: [String] = []
+    let request = VNRecognizeTextRequest { req, _ in
+        guard let observations = req.results as? [VNRecognizedTextObservation] else { return }
+        lines = observations.compactMap { $0.topCandidates(1).first?.string }
+    }
+    request.recognitionLevel = .fast
+    request.usesLanguageCorrection = false
+    let handler = VNImageRequestHandler(cgImage: image, options: [:])
+    try? handler.perform([request])
+    return lines.joined(separator: "\n")
+}
+
+func encodeLowResJpegBase64(_ image: CGImage, maxDimension: Int = 640) -> String? {
+    let w = image.width
+    let h = image.height
+    guard w > 0, h > 0 else { return nil }
+    let scale = min(1.0, Double(maxDimension) / Double(max(w, h)))
+    let targetW = max(1, Int(Double(w) * scale))
+    let targetH = max(1, Int(Double(h) * scale))
+
+    let colorSpace = CGColorSpaceCreateDeviceRGB()
+    guard let ctx = CGContext(
+        data: nil,
+        width: targetW,
+        height: targetH,
+        bitsPerComponent: 8,
+        bytesPerRow: 0,
+        space: colorSpace,
+        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+    ) else { return nil }
+    ctx.interpolationQuality = .medium
+    ctx.draw(image, in: CGRect(x: 0, y: 0, width: targetW, height: targetH))
+    guard let scaled = ctx.makeImage() else { return nil }
+
+    let rep = NSBitmapImageRep(cgImage: scaled)
+    guard let jpeg = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.55]) else {
+        return nil
+    }
+    return jpeg.base64EncodedString()
+}
+
+func captureActiveWindowImage() -> CGImage? {
+    guard CGPreflightScreenCaptureAccess() else { return nil }
+    let frontPid = NSWorkspace.shared.frontmostApplication?.processIdentifier
+    let sem = DispatchSemaphore(value: 0)
+    var captured: CGImage?
+
+    Task {
+        defer { sem.signal() }
+        guard let content = try? await SCShareableContent.excludingDesktopWindows(
+            false,
+            onScreenWindowsOnly: true
+        ) else { return }
+
+        let targetWindow = content.windows.first { win in
+            win.isOnScreen && win.frame.width > 80 && win.frame.height > 80 &&
+            (frontPid == nil || win.owningApplication?.processID == frontPid)
+        } ?? content.windows.first { $0.isOnScreen && $0.frame.width > 80 }
+
+        guard let win = targetWindow else { return }
+        let filter = SCContentFilter(desktopIndependentWindow: win)
+        let config = SCStreamConfiguration()
+        config.width = max(1, Int(win.frame.width))
+        config.height = max(1, Int(win.frame.height))
+        config.showsCursor = false
+
+        captured = try? await SCScreenshotManager.captureImage(
+            contentFilter: filter,
+            configuration: config
+        )
+    }
+    _ = sem.wait(timeout: .now() + 2.0)
+    return captured
 }
 
 // MARK: - Permissions & NDJSON stdio RPC
@@ -255,6 +359,21 @@ func handleRPC(id: Any, method: String, params: [String: Any]) {
             return
         }
         writeJSONLine(["id": id, "ok": true, "result": ["ok": undoViaAX(token)]])
+    case "capture_snapshot":
+        guard let img = captureActiveWindowImage() else {
+            writeJSONLine(["id": id, "ok": false, "error": "Active window capture unavailable"])
+            return
+        }
+        let ocrText = recognizeTextFast(img)
+        let dHashHex = computeDHashHex(img)
+        var result: [String: Any] = [
+            "ocrText": ocrText,
+            "dHashHex": dHashHex,
+        ]
+        if let crop = encodeLowResJpegBase64(img) {
+            result["imageCropBase64"] = crop
+        }
+        writeJSONLine(["id": id, "ok": true, "result": result])
     default:
         writeJSONLine(["id": id, "ok": false, "error": "Unknown method: \(method)"])
     }

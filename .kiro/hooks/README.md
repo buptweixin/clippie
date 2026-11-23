@@ -9,5 +9,8 @@ Planned hooks (implemented as the build progresses):
 - **spec-check** — on commit, verify that `.kiro/specs/clippie/tasks.md`
   checkboxes match the PR description's claimed milestone.
 
-Hook definitions will be added as `.kiro.hook` files next to this README.
+Hook definitions live next to this README:
+- `on-save-summary.kiro.hook`
+- `spec-check.kiro.hook`
+
 `.kiro/` is intentionally NOT listed in `.gitignore`.

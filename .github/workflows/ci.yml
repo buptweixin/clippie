@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test-and-build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: npm install --ignore-scripts
+
+      - name: Typecheck & build TypeScript
+        run: npm run typecheck && npm run build
+
+      - name: Run unit & adapter conformance suite
+        run: npm test
+
+      - name: Build & smoke-test macOS Swift sidecar
+        if: runner.os == 'macOS'
+        run: |
+          npm run sidecar:build:mac
+          printf '{"id":1,"method":"ping"}\n{"id":2,"method":"check_permissions"}\n' | ./dist/clippie-sidecar --stdio
+
+      - name: Build Windows UIA sidecar
+        if: runner.os == 'Windows'
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Compile Windows C# helper
+        if: runner.os == 'Windows'
+        run: dotnet build native/windows/ClippieSidecar.csproj -c Release

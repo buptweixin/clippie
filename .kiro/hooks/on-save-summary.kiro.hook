@@ -1,0 +1,12 @@
+{
+  "name": "on-save-summary",
+  "description": "When a draft document in the workspace is saved, stage a concise one-paragraph summary candidate without auto-inserting into the user's document (restraint rule).",
+  "trigger": {
+    "type": "fileSaved",
+    "patterns": ["demo/**/*.md", "docs/**/*.md"]
+  },
+  "action": {
+    "type": "agentPrompt",
+    "prompt": "Read the saved Markdown document and stage a 2-sentence summary artifact suitable for Clippie's `needs-summary` bubble. Follow .kiro/steering/product.md: output only a finished artifact and rationale; never modify the user's file automatically."
+  }
+}
