@@ -24,6 +24,9 @@ jobs:
       - name: Install dependencies
         run: npm install --ignore-scripts
 
+      - name: Verify Kiro spec & steering invariants
+        run: npm run spec:check
+
       - name: Typecheck & build TypeScript
         run: npm run typecheck && npm run build
 

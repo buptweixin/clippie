@@ -63,20 +63,31 @@ An optional **classic mode** recreates the original's overly eager personality
   (macOS AXUIElement, Windows UI Automation) → L3 clipboard paste fallback
   that always works. See [docs/architecture.md](docs/architecture.md).
 
+## Quick Verify (Judges & Developers)
+
+```bash
+npm install --ignore-scripts
+npm run spec:check   # Verify .kiro/specs & .kiro/steering invariants
+npm test             # Run Vitest unit + cross-platform adapter conformance suite
+npm run demo:loop    # Run the 4-act closed agent loop walkthrough in terminal
+```
+
+On macOS, build the native `AXUIElement` + `ScreenCaptureKit` + Apple Vision sidecar with:
+
+```bash
+npm run build && npm run sidecar:build:mac
+```
+
 ## Status
 
-Hackathon scaffold — core loop, adapter interfaces, stuck-state detector and
-bubble UI are in `src/`; native sidecars for the accessibility layer are in
-`native/`. Demo path is fixed to Word + Google Docs first; see
-[demo/storyboard.md](demo/storyboard.md) for the <3-minute demo plan and
-[.kiro/specs/clippie/tasks.md](.kiro/specs/clippie/tasks.md) for the build plan.
+Core closed agent loop, perceptual-hash snapshot deduper, outcome tracker, layered `L1 → L2 → L3` execution orchestrator, clean non-modal 3-action bubble UI, macOS Swift AX/Vision sidecar, and Windows C# UIA/UIPI helper are implemented and verified in CI (`.github/workflows/ci.yml`).
+See [demo/storyboard.md](demo/storyboard.md) for the <3-minute problem-first demo script, [docs/devpost-submission.md](docs/devpost-submission.md) for the submission write-up, and [.kiro/specs/clippie/tasks.md](.kiro/specs/clippie/tasks.md) for the milestone checklist.
 
-Submission deadline: **2026-12-04 14:00 PT**.
+Submission deadline: **2026-12-04 14:00 PT** (2026-12-05 06:00 UTC+8).
 
 ## Built with
 
-- **Kiro** — spec-driven development: specs in `.kiro/specs/`, product rules
-  in `.kiro/steering/`, automation in `.kiro/hooks/`.
+- **Kiro** — spec-driven development: specs in `.kiro/specs/`, always-on product & tech guardrails in `.kiro/steering/`, executable hooks in `.kiro/hooks/` + `scripts/spec-check.mjs`.
   See [docs/kiro-usage.md](docs/kiro-usage.md).
 - **Devin** — parallel implementation spikes for the macOS AX sidecar, the
   Windows UIA adapter, and the shared adapter conformance tests.

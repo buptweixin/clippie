@@ -1,12 +1,12 @@
 {
   "name": "spec-check",
-  "description": "Verify TypeScript strict typecheck, adapter conformance tests, and Kiro spec/task alignment before commits.",
+  "description": "Verify Kiro spec/steering invariants (scripts/spec-check.mjs), TypeScript strict typecheck, and adapter conformance tests before commits.",
   "trigger": {
     "type": "manual",
-    "command": "npm run typecheck && npm test"
+    "command": "npm run spec:check && npm run typecheck && npm test"
   },
   "action": {
     "type": "agentPrompt",
-    "prompt": "Run `npm run typecheck && npm test` and verify that checked items in `.kiro/specs/clippie/tasks.md` match implemented and tested capabilities in `src/`, `native/`, and `tests/`."
+    "prompt": "Run `npm run spec:check && npm run typecheck && npm test` and verify that checked items in `.kiro/specs/clippie/tasks.md` and rules in `.kiro/steering/` hold across `src/`, `native/`, and `tests/`."
   }
 }
