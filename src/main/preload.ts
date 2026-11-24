@@ -3,6 +3,7 @@ import { contextBridge, ipcRenderer } from "electron";
 export interface ClippieOfferPayload {
   text: string;
   rationale: string;
+  stuckType?: string;
   degradationNote?: string;
   classicMode?: boolean;
 }

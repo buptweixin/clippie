@@ -7,6 +7,8 @@
   "scripts": {
     "build": "tsc -b && node -e \"require('fs').copyFileSync('src/renderer/bubble.html','dist/renderer/bubble.html')\"",
     "dev": "npm run build && electron .",
+    "demo:loop": "npm run build && node dist/cli/demoRunner.js",
+    "spec:check": "node scripts/spec-check.mjs",
     "test": "vitest run",
     "typecheck": "tsc -b --noEmit",
     "sidecar:build:mac": "swiftc -parse-as-library -O native/macos/Sidecar.swift -o dist/clippie-sidecar"

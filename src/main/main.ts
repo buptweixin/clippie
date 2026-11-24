@@ -21,14 +21,16 @@ import {
 import * as path from "node:path";
 import { AgentLoop } from "../agent/loop";
 import { createDefaultModelClient } from "../agent/modelClient";
-import { MockDocumentAdapter } from "../adapters/MockDocumentAdapter";
 import { SnapshotDeduper } from "../perception/perceptualHash";
+import type { StuckType } from "../perception/stuckDetector";
 import { MAC_SETTINGS_URLS } from "./permissions";
+import { createPlatformRuntime, type PlatformRuntime } from "./runtime";
 
 let bubble: BrowserWindow | null = null;
 let tray: Tray | null = null;
 let classicMode = false;
 let loop: AgentLoop | null = null;
+let runtime: PlatformRuntime | null = null;
 
 type OfferChoice = "insert" | "another" | "dismiss";
 let pendingChoiceResolve: ((choice: OfferChoice) => void) | null = null;
@@ -114,6 +116,7 @@ function refreshTrayMenu(t: Tray): void {
 export function showOffer(payload: {
   text: string;
   rationale: string;
+  stuckType?: StuckType;
   degradationNote?: string;
 }): Promise<OfferChoice> {
   if (!bubble) {
@@ -139,19 +142,22 @@ app.whenReady().then(() => {
   bubble = createBubble();
   tray = createCompanionTray();
 
-  const adapter = new MockDocumentAdapter({ appName: "Desktop" });
+  runtime = createPlatformRuntime(path.resolve(__dirname, ".."));
   const model = createDefaultModelClient();
   const deduper = new SnapshotDeduper();
 
   loop = new AgentLoop(
-    adapter,
+    runtime.adapter,
     model,
     {
-      offer: (artifact) => showOffer(artifact),
+      offer: (artifact, stuckType) => showOffer({ ...artifact, stuckType }),
       notify: (notice) => sendNotice(notice),
     },
     Date.now,
-    { deduper },
+    {
+      deduper,
+      snapshotProvider: runtime.snapshotProvider,
+    },
   );
 
   ipcMain.on("clippie:respond", (_event, choice: OfferChoice) => {
@@ -181,6 +187,10 @@ app.whenReady().then(() => {
     pendingChoiceResolve = null;
     resolve?.("dismiss");
   });
+});
+
+app.on("before-quit", () => {
+  void runtime?.close();
 });
 
 app.on("window-all-closed", () => {
