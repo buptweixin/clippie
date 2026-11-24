@@ -1,6 +1,6 @@
 # Launch post (X / Twitter)
 
-📎 It looks like you're trying to write a document...
+#KiroweenHackathon26 📎 It looks like you're trying to write a document...
 
 I'm resurrecting Clippy for #Kiroween 2026 — same paperclip, but now with
 actual multimodal vision.
