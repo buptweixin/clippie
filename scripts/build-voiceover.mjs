@@ -1,7 +1,11 @@
 #!/usr/bin/env node
 /**
- * Synthesizes per-scene voiceover narration using macOS `say` + `ffmpeg`,
- * measures exact millisecond durations via `ffprobe`, concatenates a master
+ * Synthesizes per-scene voiceover narration using either:
+ *   - Gemini 2.5 Native TTS (`--provider=gemini`, default when GEMINI_API_KEY /
+ *     GEMINI_API_KEY_FILE is set)
+ *   - macOS `say` fallback (`--provider=say`)
+ *
+ * Measures exact millisecond durations via `ffprobe`, concatenates a master
  * audio track (`out/audio/voiceover.m4a`), and emits `out/audio/timings.json`
  * + `out/clippie-kiroween-demo.srt` so the browser demo choreography stays
  * frame-accurate with the voiceover.
@@ -22,28 +26,28 @@ const SCENES = [
     title: "The Problem: 1997 Interruptions vs. 2026 Passive Chatboxes",
     caption: "1997 Clippy interrupted with generic advice · 2026 chatbots force context-switching",
     voiceText:
-      "Why did the original Clippy die in nineteen ninety-seven? Because it interrupted at the wrong time, gave generic advice, and never learned. Yet modern AI assistants have the opposite flaw: they are passive chat sidebars that force you to stop writing, copy context out, and prompt-engineer a reply. Clippie resurrects the desktop paperclip as a closed-loop multimodal agent that observes, decides, acts, and learns.",
+      "Why did the original Clippy die in 1997? Because it interrupted at the wrong time, gave generic advice, and never learned. Yet modern AI assistants have the opposite flaw: they're passive chat sidebars that force you to stop writing, copy context out, and prompt-engineer a reply. Clippie resurrects the desktop paperclip as a closed-loop multimodal agent that observes, decides, acts, and learns.",
   },
   {
     id: "scene2",
     title: "Restraint by Default — Zero Polling, Zero Distraction",
     caption: "Restraint first: local event stream only · 0 continuous capture · 0 LLM calls on steady typing",
     voiceText:
-      "Restraint is our first feature. During normal writing, Clippie stays completely invisible in the menu bar. There is no chat box, no continuous screen recording, and zero background model polling.",
+      "Restraint is our first feature. During normal writing, Clippie stays completely invisible in the menu bar. There's no chat box, no continuous screen recording, and zero background model polling.",
   },
   {
     id: "scene3",
     title: "Stuck Detection → Regenerate → One-Click Cursor Insertion",
     caption: "3× paragraph rewrites + 4× PDF switches → missing-transition (0.82) → 1-click L2 AX insert",
     voiceText:
-      "Watch what happens when we get stuck bridging Related Work to Method—rewriting the same sentence three times while switching to a reference PDF four times. Clippie's local detector fires, captures a single active-window OCR snapshot, and offers one finished two-sentence bridge. We can click Another version for a tighter angle, then click Insert at cursor to splice it straight into the document with snapshot-backed undo.",
+      "Watch what happens when we get stuck bridging Related Work to Method—rewriting the same sentence three times while switching to a reference PDF four times. Clippie's local detector fires, captures a single active-window OCR snapshot, and offers one finished two-sentence bridge. We can click Another version for a tighter angle, then click Insert at cursor to splice it straight into the document, with snapshot-backed undo.",
   },
   {
     id: "scene4",
     title: "Closing the Loop — Outcome Learning & 30-Minute Silence",
     caption: "Kept draft boosts weight (1.00 → 1.10) · 3 consecutive dismissals trigger 30m silence",
     voiceText:
-      "Next, Clippie closes the feedback loop. When we keep the inserted bridge and continue writing past it, the outcome observer boosts the weight for transitions in Word. Conversely, if we dismiss a blank-page suggestion three times in a row, Clippie announces it is going quiet for thirty minutes—and actually shuts up.",
+      "Next, Clippie closes the feedback loop. When we keep the inserted bridge and continue writing past it, the outcome observer boosts the weight for transitions in Word. Conversely, if we dismiss a blank-page suggestion three times in a row, Clippie announces it's going quiet for thirty minutes—and actually shuts up.",
   },
   {
     id: "scene5",
@@ -57,13 +61,138 @@ const SCENES = [
     title: "Opt-In '97 Mode & Kiro Spec-Driven Architecture",
     caption: "Built with .kiro/specs, .kiro/steering & executable .kiro/hooks · 54/54 CI tests passing",
     voiceText:
-      "An opt-in ninety-seven toggle brings back classic eager Clippy for a quick laugh. Under the hood, Clippie was built spec-first with Kiro: specs decomposed our L1-to-L3 adapters, steering files banned chat drift and continuous capture, and executable Kiro hooks enforce those invariants across fifty-four cross-platform tests. Dead software—back with a brain, and with manners.",
+      "An opt-in '97 toggle brings back classic eager Clippy for a quick laugh. Under the hood, Clippie was built spec-first with Kiro: specs decomposed our L1-to-L3 adapters, steering files banned chat drift and continuous capture, and executable Kiro hooks enforce those invariants across fifty-four cross-platform tests. Dead software—back with a brain, and with manners.",
   },
 ];
 
 const LEAD_IN_MS = 500;
 const INTER_SCENE_GAP_MS = 450;
 const TAIL_MS = 1200;
+
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function resolveGeminiApiKey() {
+  if (process.env.GEMINI_API_KEY?.trim()) {
+    return process.env.GEMINI_API_KEY.trim();
+  }
+  if (process.env.GEMINI_API_KEY_FILE) {
+    return fs.readFileSync(process.env.GEMINI_API_KEY_FILE, "utf8").trim();
+  }
+  return null;
+}
+
+async function resolveGeminiTtsModel(apiKey) {
+  try {
+    const res = await fetch(
+      "https://generativelanguage.googleapis.com/v1beta/models",
+      { headers: { "x-goog-api-key": apiKey } },
+    );
+    if (!res.ok) return "gemini-2.5-flash-preview-tts";
+    const data = await res.json();
+    const names = (data.models ?? []).map((m) => String(m.name ?? "").replace(/^models\//, ""));
+    const preferred = [
+      "gemini-2.5-flash-preview-tts",
+      "gemini-2.5-flash-tts",
+    ];
+    for (const p of preferred) {
+      if (names.includes(p)) return p;
+    }
+    const anyFlashTts = names.find((n) => n.includes("flash") && n.includes("tts"));
+    return anyFlashTts ?? "gemini-2.5-flash-preview-tts";
+  } catch {
+    return "gemini-2.5-flash-preview-tts";
+  }
+}
+
+async function synthesizeGeminiWav(apiKey, model, voiceName, text, outWavPath) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
+  const body = {
+    contents: [
+      {
+        parts: [{ text }],
+      },
+    ],
+    generationConfig: {
+      responseModalities: ["AUDIO"],
+      speechConfig: {
+        voiceConfig: {
+          prebuiltVoiceConfig: {
+            voiceName,
+          },
+        },
+      },
+    },
+  };
+
+  for (let attempt = 1; attempt <= 5; attempt++) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (res.status === 429 && attempt < 5) {
+      const waitSec = 22 * attempt;
+      console.log(`[gemini-tts] Rate limited (429), waiting ${waitSec}s before retry ${attempt + 1}/5...`);
+      await sleep(waitSec * 1000);
+      continue;
+    }
+
+    if (!res.ok) {
+      const errText = await res.text();
+      throw new Error(`Gemini TTS HTTP ${res.status}: ${errText.slice(0, 300)}`);
+    }
+
+    const json = await res.json();
+    const inline = json?.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
+    if (!inline?.data) {
+      throw new Error("Gemini TTS response missing inlineData audio");
+    }
+
+    const mime = String(inline.mimeType ?? "audio/L16;rate=24000");
+    const rateMatch = mime.match(/rate=(\d+)/i);
+    const sampleRate = rateMatch ? Number(rateMatch[1]) : 24000;
+    const rawBuf = Buffer.from(inline.data, "base64");
+    const rawPath = `${outWavPath}.pcm`;
+    fs.writeFileSync(rawPath, rawBuf);
+
+    if (mime.includes("wav")) {
+      execFileSync(
+        "ffmpeg",
+        ["-y", "-i", rawPath, "-ar", "44100", "-ac", "1", "-c:a", "pcm_s16le", outWavPath],
+        { stdio: "ignore" },
+      );
+    } else {
+      execFileSync(
+        "ffmpeg",
+        [
+          "-y",
+          "-f",
+          "s16le",
+          "-ar",
+          String(sampleRate),
+          "-ac",
+          "1",
+          "-i",
+          rawPath,
+          "-ar",
+          "44100",
+          "-ac",
+          "1",
+          "-c:a",
+          "pcm_s16le",
+          outWavPath,
+        ],
+        { stdio: "ignore" },
+      );
+    }
+    fs.rmSync(rawPath, { force: true });
+    return;
+  }
+}
 
 function probeDurationMs(filePath) {
   const out = execFileSync(
@@ -83,18 +212,22 @@ function probeDurationMs(filePath) {
 }
 
 function makeSilenceWav(filePath, durationMs) {
-  execFileSync("ffmpeg", [
-    "-y",
-    "-f",
-    "lavfi",
-    "-i",
-    "anullsrc=r=44100:cl=mono",
-    "-t",
-    (durationMs / 1000).toFixed(3),
-    "-c:a",
-    "pcm_s16le",
-    filePath,
-  ], { stdio: "ignore" });
+  execFileSync(
+    "ffmpeg",
+    [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "anullsrc=r=44100:cl=mono",
+      "-t",
+      (durationMs / 1000).toFixed(3),
+      "-c:a",
+      "pcm_s16le",
+      filePath,
+    ],
+    { stdio: "ignore" },
+  );
 }
 
 function formatSrtTime(ms) {
@@ -106,105 +239,146 @@ function formatSrtTime(ms) {
   return `${hrs}:${mins}:${secs},${String(millis).padStart(3, "0")}`;
 }
 
-const concatParts = [];
-const leadWav = path.join(AUDIO_DIR, "lead.wav");
-makeSilenceWav(leadWav, LEAD_IN_MS);
-concatParts.push(leadWav);
+async function main() {
+  const geminiKey = resolveGeminiApiKey();
+  const useGemini =
+    process.argv.includes("--provider=gemini") ||
+    (Boolean(geminiKey) && !process.argv.includes("--provider=say"));
+  const voiceName = process.env.GEMINI_TTS_VOICE ?? "Charon";
+  const model = useGemini ? await resolveGeminiTtsModel(geminiKey) : null;
 
-const gapWav = path.join(AUDIO_DIR, "gap.wav");
-makeSilenceWav(gapWav, INTER_SCENE_GAP_MS);
+  if (useGemini) {
+    console.log(`[voiceover] Synthesizing 6 scenes via Gemini Native TTS (${model}, voice=${voiceName})...`);
+  } else {
+    console.log("[voiceover] Synthesizing 6 scenes via macOS say fallback...");
+  }
 
-const tailWav = path.join(AUDIO_DIR, "tail.wav");
-makeSilenceWav(tailWav, TAIL_MS);
+  const concatParts = [];
+  const leadWav = path.join(AUDIO_DIR, "lead.wav");
+  makeSilenceWav(leadWav, LEAD_IN_MS);
+  concatParts.push(leadWav);
 
-let cursorMs = LEAD_IN_MS;
-const sceneTimings = [];
-const srtBlocks = [];
+  const gapWav = path.join(AUDIO_DIR, "gap.wav");
+  makeSilenceWav(gapWav, INTER_SCENE_GAP_MS);
 
-SCENES.forEach((scene, idx) => {
-  const aiff = path.join(AUDIO_DIR, `${scene.id}.aiff`);
-  const wav = path.join(AUDIO_DIR, `${scene.id}.wav`);
+  const tailWav = path.join(AUDIO_DIR, "tail.wav");
+  makeSilenceWav(tailWav, TAIL_MS);
 
-  execFileSync("say", ["-v", "Samantha", "-r", "182", "-o", aiff, scene.voiceText]);
+  let cursorMs = LEAD_IN_MS;
+  const sceneTimings = [];
+  const srtBlocks = [];
+
+  for (let idx = 0; idx < SCENES.length; idx++) {
+    const scene = SCENES[idx];
+    const wav = path.join(AUDIO_DIR, `${scene.id}.wav`);
+
+    if (useGemini) {
+      console.log(`  -> Synthesizing ${scene.id}...`);
+      await synthesizeGeminiWav(geminiKey, model, voiceName, scene.voiceText, wav);
+    } else {
+      const aiff = path.join(AUDIO_DIR, `${scene.id}.aiff`);
+      execFileSync("say", ["-v", "Samantha", "-r", "182", "-o", aiff, scene.voiceText]);
+      execFileSync(
+        "ffmpeg",
+        ["-y", "-i", aiff, "-ar", "44100", "-ac", "1", "-c:a", "pcm_s16le", wav],
+        { stdio: "ignore" },
+      );
+      fs.rmSync(aiff, { force: true });
+    }
+
+    const voiceMs = probeDurationMs(wav);
+    const startMs = cursorMs;
+    const totalSceneMs =
+      voiceMs + (idx < SCENES.length - 1 ? INTER_SCENE_GAP_MS : TAIL_MS);
+    const endMs = startMs + totalSceneMs;
+
+    sceneTimings.push({
+      id: scene.id,
+      title: scene.title,
+      caption: scene.caption,
+      voiceText: scene.voiceText,
+      startMs,
+      voiceMs,
+      durationMs: totalSceneMs,
+      endMs,
+    });
+
+    srtBlocks.push(
+      `${idx + 1}\n${formatSrtTime(startMs)} --> ${formatSrtTime(startMs + voiceMs)}\n${scene.voiceText}\n`,
+    );
+
+    concatParts.push(wav);
+    concatParts.push(idx < SCENES.length - 1 ? gapWav : tailWav);
+    cursorMs = endMs;
+  }
+
+  const concatListPath = path.join(AUDIO_DIR, "concat.txt");
+  fs.writeFileSync(
+    concatListPath,
+    concatParts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"),
+  );
+
+  const masterAudioPath = path.join(AUDIO_DIR, "voiceover.m4a");
   execFileSync(
     "ffmpeg",
-    ["-y", "-i", aiff, "-ar", "44100", "-ac", "1", "-c:a", "pcm_s16le", wav],
+    [
+      "-y",
+      "-f",
+      "concat",
+      "-safe",
+      "0",
+      "-i",
+      concatListPath,
+      "-c:a",
+      "aac",
+      "-b:a",
+      "192k",
+      masterAudioPath,
+    ],
     { stdio: "ignore" },
   );
-  fs.rmSync(aiff, { force: true });
 
-  const voiceMs = probeDurationMs(wav);
-  const startMs = cursorMs;
-  const totalSceneMs = voiceMs + (idx < SCENES.length - 1 ? INTER_SCENE_GAP_MS : TAIL_MS);
-  const endMs = startMs + totalSceneMs;
-
-  sceneTimings.push({
-    id: scene.id,
-    title: scene.title,
-    caption: scene.caption,
-    voiceText: scene.voiceText,
-    startMs,
-    voiceMs,
-    durationMs: totalSceneMs,
-    endMs,
-  });
-
-  srtBlocks.push(
-    `${idx + 1}\n${formatSrtTime(startMs)} --> ${formatSrtTime(startMs + voiceMs)}\n${scene.voiceText}\n`,
+  // Also export Scene 1 MP3 preview sample
+  execFileSync(
+    "ffmpeg",
+    [
+      "-y",
+      "-i",
+      path.join(AUDIO_DIR, "scene1.wav"),
+      "-c:a",
+      "libmp3lame",
+      "-q:a",
+      "2",
+      path.join(AUDIO_DIR, "sample_gemini_charon.mp3"),
+    ],
+    { stdio: "ignore" },
   );
 
-  concatParts.push(wav);
-  concatParts.push(idx < SCENES.length - 1 ? gapWav : tailWav);
-  cursorMs = endMs;
-});
+  const totalDurationMs = probeDurationMs(masterAudioPath);
+  const timingsPayload = {
+    provider: useGemini ? `gemini:${model}:${voiceName}` : "macos-say",
+    leadInMs: LEAD_IN_MS,
+    totalDurationMs,
+    scenes: sceneTimings,
+  };
 
-const concatListPath = path.join(AUDIO_DIR, "concat.txt");
-fs.writeFileSync(
-  concatListPath,
-  concatParts.map((p) => `file '${p.replace(/'/g, "'\\''")}'`).join("\n"),
-);
+  fs.writeFileSync(
+    path.join(AUDIO_DIR, "timings.json"),
+    JSON.stringify(timingsPayload, null, 2),
+  );
+  fs.writeFileSync(
+    path.join(OUT_DIR, "clippie-kiroween-demo.srt"),
+    srtBlocks.join("\n"),
+  );
 
-const masterAudioPath = path.join(AUDIO_DIR, "voiceover.m4a");
-execFileSync(
-  "ffmpeg",
-  [
-    "-y",
-    "-f",
-    "concat",
-    "-safe",
-    "0",
-    "-i",
-    concatListPath,
-    "-c:a",
-    "aac",
-    "-b:a",
-    "192k",
-    masterAudioPath,
-  ],
-  { stdio: "ignore" },
-);
-
-const totalDurationMs = probeDurationMs(masterAudioPath);
-const timingsPayload = {
-  leadInMs: LEAD_IN_MS,
-  totalDurationMs,
-  scenes: sceneTimings,
-};
-
-fs.writeFileSync(
-  path.join(AUDIO_DIR, "timings.json"),
-  JSON.stringify(timingsPayload, null, 2),
-);
-fs.writeFileSync(
-  path.join(OUT_DIR, "clippie-kiroween-demo.srt"),
-  srtBlocks.join("\n"),
-);
-
-console.log(
-  `[voiceover OK] Total ${(totalDurationMs / 1000).toFixed(1)}s (${sceneTimings.length} scenes) -> ${masterAudioPath}`,
-);
-for (const s of sceneTimings) {
   console.log(
-    `  ${s.id}: ${(s.startMs / 1000).toFixed(1)}s -> ${(s.endMs / 1000).toFixed(1)}s (${(s.durationMs / 1000).toFixed(1)}s)`,
+    `[voiceover OK] Total ${(totalDurationMs / 1000).toFixed(1)}s (${sceneTimings.length} scenes) -> ${masterAudioPath}`,
   );
+  for (const s of sceneTimings) {
+    console.log(
+      `  ${s.id}: ${(s.startMs / 1000).toFixed(1)}s -> ${(s.endMs / 1000).toFixed(1)}s (${(s.durationMs / 1000).toFixed(1)}s)`,
+    );
+  }
 }
+
+void main();
