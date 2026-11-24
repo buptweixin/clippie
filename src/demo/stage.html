@@ -1,0 +1,1091 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Clippie — Kiroween 2026 Live Demo</title>
+    <style>
+      :root {
+        --ink: #18181b;
+        --muted: #64748b;
+        --bubble-bg: #fffdf5;
+        --bubble-border: #e5dec9;
+        --accent: #1d4ed8;
+        --accent-soft: #dbeafe;
+        --amber-bg: #fef3c7;
+        --amber-ink: #92400e;
+        --emerald: #059669;
+      }
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        width: 1280px;
+        height: 720px;
+        overflow: hidden;
+        font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Inter, sans-serif;
+        background: linear-gradient(135deg, #0f172a 0%, #1e293b 52%, #0f172a 100%);
+        color: var(--ink);
+        user-select: none;
+      }
+
+      /* Top macOS-style menu bar */
+      .menubar {
+        height: 32px;
+        padding: 0 18px;
+        background: rgba(15, 23, 42, 0.82);
+        backdrop-filter: blur(12px);
+        color: #f8fafc;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12.5px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      }
+      .menubar-left, .menubar-right {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .tray-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 10px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.12);
+        font-weight: 600;
+        font-size: 12px;
+      }
+      .tray-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #34d399;
+      }
+
+      /* Stage container */
+      .stage {
+        position: relative;
+        width: 1280px;
+        height: 688px;
+        padding: 22px 28px 66px;
+      }
+
+      .scene-layer {
+        position: absolute;
+        inset: 22px 28px 66px;
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(6px);
+        transition: opacity 280ms ease, transform 280ms ease;
+      }
+      .scene-layer.active {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+      }
+
+      /* Scene 1: Problem First Split View */
+      .problem-layout {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 18px;
+      }
+      .hero-header {
+        text-align: center;
+        color: #f8fafc;
+        padding-top: 6px;
+      }
+      .hero-eyebrow {
+        display: inline-block;
+        padding: 4px 12px;
+        border-radius: 999px;
+        background: rgba(59, 130, 246, 0.2);
+        border: 1px solid rgba(96, 165, 250, 0.4);
+        color: #93c5fd;
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+      }
+      .hero-header h1 {
+        margin: 10px 0 6px;
+        font-size: 32px;
+        letter-spacing: -0.02em;
+      }
+      .hero-header p {
+        margin: 0;
+        color: #cbd5e1;
+        font-size: 16px;
+      }
+      .problem-cards {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 22px;
+        flex: 1;
+      }
+      .prob-card {
+        background: rgba(30, 41, 59, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.22);
+        border-radius: 16px;
+        padding: 24px 26px;
+        color: #f1f5f9;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+      }
+      .prob-era {
+        font-size: 12px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.06em;
+        color: #fbbf24;
+      }
+      .prob-era.modern { color: #38bdf8; }
+      .prob-title {
+        font-size: 22px;
+        font-weight: 700;
+        margin: 6px 0 12px;
+      }
+      .prob-mock {
+        background: #fffbe6;
+        color: #1c1917;
+        border: 2px solid #292524;
+        border-radius: 10px;
+        padding: 12px 14px;
+        font-size: 14px;
+        box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.3);
+      }
+      .prob-mock.chat {
+        background: #0f172a;
+        color: #e2e8f0;
+        border: 1px solid #334155;
+        box-shadow: none;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12.5px;
+      }
+      .prob-list {
+        margin: 14px 0 0;
+        padding-left: 18px;
+        color: #cbd5e1;
+        font-size: 14.5px;
+        line-height: 1.65;
+      }
+      .thesis-bar {
+        background: linear-gradient(90deg, #1d4ed8, #2563eb);
+        color: #ffffff;
+        border-radius: 14px;
+        padding: 16px 24px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 12px 30px rgba(29, 78, 216, 0.35);
+      }
+      .thesis-bar strong { font-size: 18px; }
+      .loop-steps {
+        display: flex;
+        gap: 10px;
+        font-size: 13px;
+        font-weight: 600;
+      }
+      .loop-steps span {
+        background: rgba(255, 255, 255, 0.18);
+        padding: 5px 12px;
+        border-radius: 999px;
+      }
+
+      /* Desktop Workspace (Scenes 2, 3, 4, 5) */
+      .desktop-grid {
+        height: 100%;
+        display: grid;
+        grid-template-columns: 1.42fr 1fr;
+        gap: 18px;
+      }
+      .app-window {
+        background: #ffffff;
+        border-radius: 13px;
+        box-shadow: 0 18px 42px rgba(0, 0, 0, 0.34);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        transition: box-shadow 200ms ease, transform 200ms ease;
+      }
+      .app-window.focused-ring {
+        box-shadow: 0 0 0 3px #3b82f6, 0 20px 46px rgba(0, 0, 0, 0.45);
+      }
+      .win-titlebar {
+        height: 36px;
+        background: #f1f5f9;
+        border-bottom: 1px solid #e2e8f0;
+        padding: 0 14px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        font-size: 12.5px;
+        font-weight: 600;
+        color: #334155;
+      }
+      .traffic-lights {
+        display: flex;
+        gap: 7px;
+      }
+      .traffic-lights i {
+        width: 11px;
+        height: 11px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+      .tl-r { background: #ef4444; }
+      .tl-y { background: #f59e0b; }
+      .tl-g { background: #10b981; }
+      .win-tag {
+        font-size: 11px;
+        padding: 2px 8px;
+        border-radius: 6px;
+        background: #e2e8f0;
+        color: #475569;
+      }
+      .win-tag.elevated {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .doc-toolbar {
+        padding: 7px 16px;
+        background: #f8fafc;
+        border-bottom: 1px solid #e2e8f0;
+        font-size: 11.5px;
+        color: #64748b;
+        display: flex;
+        gap: 16px;
+      }
+      .doc-body {
+        padding: 24px 30px;
+        font-family: "Georgia", "Times New Roman", serif;
+        font-size: 15.5px;
+        line-height: 1.68;
+        color: #1e293b;
+        flex: 1;
+        white-space: pre-wrap;
+        overflow-y: auto;
+      }
+      .doc-title {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+        font-size: 20px;
+        font-weight: 700;
+        margin: 0 0 14px;
+        color: #0f172a;
+      }
+      .inserted-highlight {
+        background: #dbeafe;
+        border-radius: 4px;
+        padding: 1px 3px;
+        transition: background 800ms ease;
+      }
+      .caret {
+        display: inline-block;
+        width: 2px;
+        height: 17px;
+        background: #2563eb;
+        vertical-align: text-bottom;
+        animation: blink 950ms steps(1) infinite;
+      }
+      @keyframes blink { 50% { opacity: 0; } }
+
+      .right-stack {
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+        height: 100%;
+      }
+      .pdf-body {
+        padding: 16px 20px;
+        font-size: 13px;
+        line-height: 1.55;
+        color: #334155;
+        background: #fafafa;
+        flex: 1;
+      }
+      .pdf-cite {
+        background: #fef9c3;
+        border-left: 3px solid #eab308;
+        padding: 8px 10px;
+        margin: 10px 0;
+        font-size: 12.5px;
+      }
+
+      /* Live Agent Telemetry Inspector */
+      .telemetry-panel {
+        background: rgba(15, 23, 42, 0.94);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        border-radius: 13px;
+        padding: 13px 16px;
+        color: #e2e8f0;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+      }
+      .tel-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: #93c5fd;
+        font-weight: 700;
+        margin-bottom: 8px;
+        font-size: 11.5px;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+      }
+      .tel-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 7px 12px;
+      }
+      .tel-item span { color: #94a3b8; }
+      .tel-item strong { color: #f8fafc; }
+      .tel-item strong.good { color: #34d399; }
+      .tel-item strong.warn { color: #fbbf24; }
+
+      /* Actual Clippie Non-Modal Bubble (matching src/renderer/bubble.html) */
+      .clippie-bubble-wrap {
+        position: absolute;
+        left: 340px;
+        top: 235px;
+        z-index: 30;
+        opacity: 0;
+        transform: translateY(10px) scale(0.97);
+        pointer-events: none;
+        transition: opacity 220ms ease, transform 220ms ease;
+      }
+      .clippie-bubble-wrap.visible {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+        pointer-events: auto;
+      }
+      .bubble {
+        background: var(--bubble-bg);
+        border: 1px solid var(--bubble-border);
+        border-radius: 14px;
+        padding: 13px 15px;
+        width: 356px;
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.28), 0 3px 10px rgba(15, 23, 42, 0.12);
+      }
+      .b-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 8px;
+      }
+      .b-brand {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+      }
+      .b-badge {
+        font-size: 11px;
+        font-weight: 600;
+        color: #57534e;
+        background: #f3efe2;
+        padding: 3px 9px;
+        border-radius: 999px;
+      }
+      .b-classic {
+        font-size: 11px;
+        color: #78716c;
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+      }
+      .b-classic-banner {
+        font-style: italic;
+        font-size: 12.5px;
+        color: #1d4ed8;
+        font-weight: 600;
+        margin: 0 0 6px;
+      }
+      .b-rationale {
+        color: #6b665c;
+        font-size: 12px;
+        margin: 0 0 8px;
+      }
+      .b-artifact {
+        background: #ffffff;
+        border: 1px solid var(--bubble-border);
+        border-radius: 9px;
+        padding: 9px 11px;
+        font-size: 13px;
+        line-height: 1.48;
+        color: #1c1917;
+      }
+      .b-degradation {
+        background: var(--amber-bg);
+        color: var(--amber-ink);
+        border-radius: 7px;
+        padding: 6px 9px;
+        font-size: 11.5px;
+        margin: 8px 0 0;
+        font-weight: 500;
+      }
+      .b-notice {
+        background: #eff6ff;
+        color: #1e40af;
+        border-radius: 7px;
+        padding: 6px 9px;
+        font-size: 12px;
+        margin: 8px 0 0;
+        font-weight: 500;
+      }
+      .b-actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 10px;
+      }
+      .b-actions button {
+        font-family: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        border-radius: 8px;
+        padding: 7px 10px;
+        cursor: pointer;
+      }
+      .btn-primary {
+        background: var(--accent);
+        color: #fff;
+        border: 1px solid var(--accent);
+        flex: 1;
+      }
+      .btn-secondary {
+        background: #fff;
+        color: #1c1917;
+        border: 1px solid var(--bubble-border);
+      }
+      .btn-quiet {
+        background: transparent;
+        color: #6b665c;
+        border: 1px solid transparent;
+      }
+      .btn-clicking {
+        transform: scale(0.95);
+        box-shadow: 0 0 0 3px rgba(29, 78, 216, 0.35);
+      }
+
+      /* Scene 6: Kiro Spec-Driven Architecture Card */
+      .kiro-layout {
+        height: 100%;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        gap: 16px;
+        color: #f8fafc;
+      }
+      .kiro-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 18px;
+      }
+      .kiro-card {
+        background: rgba(30, 41, 59, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 14px;
+        padding: 18px 20px;
+      }
+      .kiro-path {
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 12px;
+        color: #60a5fa;
+        font-weight: 700;
+      }
+      .kiro-card h3 {
+        margin: 6px 0 8px;
+        font-size: 18px;
+      }
+      .kiro-card p {
+        margin: 0;
+        color: #cbd5e1;
+        font-size: 13.5px;
+        line-height: 1.55;
+      }
+      .terminal-box {
+        background: #090d16;
+        border: 1px solid #334155;
+        border-radius: 13px;
+        padding: 16px 20px;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        font-size: 13px;
+        line-height: 1.6;
+        color: #e2e8f0;
+      }
+      .term-ok { color: #34d399; font-weight: 700; }
+      .closing-banner {
+        background: rgba(255, 255, 255, 0.07);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 14px;
+        padding: 14px 22px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      /* Lower-third chapter caption bar */
+      .caption-bar {
+        position: absolute;
+        left: 28px;
+        right: 28px;
+        bottom: 14px;
+        height: 40px;
+        background: rgba(15, 23, 42, 0.88);
+        border: 1px solid rgba(148, 163, 184, 0.24);
+        border-radius: 10px;
+        padding: 0 16px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: #f8fafc;
+        font-size: 13px;
+        z-index: 40;
+      }
+      .chapter-pill {
+        background: #2563eb;
+        color: #ffffff;
+        font-size: 11px;
+        font-weight: 700;
+        padding: 3px 9px;
+        border-radius: 6px;
+        margin-right: 10px;
+      }
+
+      /* Animated demo cursor */
+      .demo-cursor {
+        position: fixed;
+        left: 640px;
+        top: 360px;
+        width: 22px;
+        height: 22px;
+        z-index: 90;
+        pointer-events: none;
+        opacity: 0;
+        transition: left 480ms cubic-bezier(0.22, 1, 0.36, 1),
+                    top 480ms cubic-bezier(0.22, 1, 0.36, 1),
+                    opacity 200ms ease;
+      }
+      .demo-cursor.visible { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <div class="menubar">
+      <div class="menubar-left">
+        <strong></strong>
+        <strong id="menubar-app">Microsoft Word</strong>
+        <span>File</span>
+        <span>Edit</span>
+        <span>View</span>
+      </div>
+      <div class="menubar-right">
+        <span class="tray-pill" id="tray-status">
+          <i class="tray-dot" id="tray-dot"></i>
+          <span>📎 Clippie · Restrained</span>
+        </span>
+        <span id="menubar-clock">Kiroween 2026</span>
+      </div>
+    </div>
+
+    <div class="stage">
+      <!-- SCENE 1: Problem First -->
+      <section class="scene-layer active" id="layer-problem">
+        <div class="problem-layout">
+          <div class="hero-header">
+            <span class="hero-eyebrow">Kiroween 2026 · Resurrection Track</span>
+            <h1>Why Clippy Died — And Why Passive Chat Sidebars Still Fail</h1>
+            <p>Writers don't need another chatbot in the corner. They need ambient, respectful execution.</p>
+          </div>
+
+          <div class="problem-cards">
+            <div class="prob-card">
+              <div>
+                <div class="prob-era">1997 – 2007 · Original Clippy</div>
+                <div class="prob-title">Active, But Blind &amp; Annoying</div>
+                <div class="prob-mock">
+                  📎 <em>"It looks like you're writing a letter! Would you like help?"</em>
+                </div>
+                <ul class="prob-list">
+                  <li>Interrupted steady flow on brittle keyword triggers</li>
+                  <li>Offered generic advice instead of drafting the hard part</li>
+                  <li>Zero memory — dismissing it 10× taught it nothing</li>
+                </ul>
+              </div>
+            </div>
+
+            <div class="prob-card">
+              <div>
+                <div class="prob-era modern">2026 · Modern AI Sidebars</div>
+                <div class="prob-title">Smart, But Passive &amp; Flow-Breaking</div>
+                <div class="prob-mock chat">
+                  &gt; Copy paragraph from Word...<br />
+                  &gt; Alt-Tab to PDF, copy citation...<br />
+                  &gt; Prompt chatbot, copy back, fix formatting...
+                </div>
+                <ul class="prob-list">
+                  <li>Forces manual context-switching at every micro-stall</li>
+                  <li>Turns writing into prompt engineering</li>
+                  <li>Cannot splice undoable drafts straight at your cursor</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div class="thesis-bar">
+            <div>
+              <strong>📎 Clippie</strong> — Resurrected as a Closed Multimodal Agent Loop
+            </div>
+            <div class="loop-steps">
+              <span>1. Observe Locally</span>
+              <span>2. Decide w/ Restraint</span>
+              <span>3. Act (1-Click Insert)</span>
+              <span>4. Learn Outcomes</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCENES 2–5: Live Desktop Workspace -->
+      <section class="scene-layer" id="layer-desktop">
+        <div class="desktop-grid">
+          <div class="app-window focused-ring" id="win-editor">
+            <div class="win-titlebar">
+              <div class="traffic-lights"><i class="tl-r"></i><i class="tl-y"></i><i class="tl-g"></i></div>
+              <span id="editor-window-title">attention_paper.docx — Word</span>
+              <span class="win-tag" id="editor-adapter-tag">L2 · macOS AXUIElement</span>
+            </div>
+            <div class="doc-toolbar">
+              <span>Style: Academic Paper</span>
+              <span>Section: 2 → 3</span>
+              <span id="undo-token-status">Snapshot Undo: Ready</span>
+            </div>
+            <div class="doc-body">
+              <div class="doc-title" id="doc-heading">Efficient Long-Context Attention via Hardware-Aware Tiling</div>
+              <span id="doc-content"></span><span class="caret"></span>
+            </div>
+          </div>
+
+          <div class="right-stack">
+            <div class="app-window" id="win-pdf" style="flex:1">
+              <div class="win-titlebar">
+                <div class="traffic-lights"><i class="tl-r"></i><i class="tl-y"></i><i class="tl-g"></i></div>
+                <span>Dao_2024_FlashAttention2.pdf — Preview</span>
+                <span class="win-tag">Reference</span>
+              </div>
+              <div class="pdf-body">
+                <strong>Section 3.1 — Warp-Level Tiling &amp; IO Complexity</strong>
+                <div class="pdf-cite">
+                  "Dao et al. (2024): Partitioning Q/K/V blocks across shared SRAM eliminates redundant HBM reads and achieves a 2×–3× wall-clock speedup over baseline attention."
+                </div>
+                <div>
+                  However, existing block-sparse variants leave cross-segment boundary transitions unaddressed under dynamic sequence lengths.
+                </div>
+              </div>
+            </div>
+
+            <div class="telemetry-panel">
+              <div class="tel-header">
+                <span>Live Agent Loop Telemetry</span>
+                <span id="tel-mode">Mode: Restrained</span>
+              </div>
+              <div class="tel-grid">
+                <div class="tel-item"><span>Signal: </span><strong id="tel-signal">edit×2 (normal)</strong></div>
+                <div class="tel-item"><span>Stuck state: </span><strong id="tel-stuck">null (silent)</strong></div>
+                <div class="tel-item"><span>Snapshot OCR: </span><strong id="tel-ocr">idle (0 captures)</strong></div>
+                <div class="tel-item"><span>VLM calls: </span><strong id="tel-vlm">0</strong></div>
+                <div class="tel-item"><span>Transition wt: </span><strong id="tel-weight" class="good">1.00</strong></div>
+                <div class="tel-item"><span>Blank-page: </span><strong id="tel-silence">active (wt 1.00)</strong></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Non-modal Clippie Bubble -->
+        <div class="clippie-bubble-wrap" id="bubble-wrap">
+          <div class="bubble">
+            <div class="b-header">
+              <div class="b-brand">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+                  <path d="M16.5 6.5v8.25a4.5 4.5 0 0 1-9 0V5.75a3 3 0 0 1 6 0v8.5a1.5 1.5 0 0 1-3 0V7.5"
+                    stroke="#1c1917" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+                  <circle cx="10.2" cy="4.4" r="1.1" fill="#1d4ed8"/>
+                  <circle cx="13.8" cy="4.4" r="1.1" fill="#1d4ed8"/>
+                </svg>
+                <span class="b-badge" id="b-badge">Section bridge</span>
+              </div>
+              <label class="b-classic">
+                <input type="checkbox" id="b-classic-toggle" />
+                <span>'97</span>
+              </label>
+            </div>
+            <p class="b-classic-banner" id="b-classic-banner" hidden>
+              It looks like you're trying to write a document!
+            </p>
+            <p class="b-rationale" id="b-rationale"></p>
+            <div class="b-artifact" id="b-artifact"></div>
+            <p class="b-degradation" id="b-degradation" hidden></p>
+            <p class="b-notice" id="b-notice" hidden></p>
+            <div class="b-actions">
+              <button class="btn-primary" id="btn-insert">Insert at cursor</button>
+              <button class="btn-secondary" id="btn-another">Another version</button>
+              <button class="btn-quiet" id="btn-dismiss">Dismiss</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- SCENE 6: Kiro Specs, Steering & Hooks Close -->
+      <section class="scene-layer" id="layer-kiro">
+        <div class="kiro-layout">
+          <div class="hero-header" style="padding-top:0">
+            <span class="hero-eyebrow">Spec-Driven Engineering with Kiro</span>
+            <h1>How .kiro/ Specs, Steering &amp; Hooks Built Clippie</h1>
+          </div>
+
+          <div class="kiro-grid">
+            <div class="kiro-card">
+              <div class="kiro-path">.kiro/specs/clippie/{requirements,design,tasks}.md</div>
+              <h3>1. Specs First</h3>
+              <p>Decomposed OS accessibility &amp; TCC hazards into 4 milestones and unified L1 / L2 (AX &amp; UIA) / L3 (Paste) behind <code>DocumentAdapter</code>.</p>
+            </div>
+            <div class="kiro-card">
+              <div class="kiro-path">.kiro/steering/{product,tech}.md</div>
+              <h3>2. Always-On Guardrails</h3>
+              <p>Banned chat inputs, enforced 3 actions max, prohibited continuous screen capture, and required snapshot-backed <code>undoToken</code>s.</p>
+            </div>
+            <div class="kiro-card">
+              <div class="kiro-path">.kiro/hooks/*.kiro.hook + scripts/spec-check.mjs</div>
+              <h3>3. Executable Hooks</h3>
+              <p><code>on-save-summary</code> stages drafts without auto-mutating files; <code>spec-check</code> enforces steering invariants in macOS + Windows CI.</p>
+            </div>
+          </div>
+
+          <div class="terminal-box" id="kiro-terminal">
+            <div>$ npm run spec:check &amp;&amp; npm test</div>
+            <div class="term-ok" id="spec-check-line">[spec-check OK] .kiro/specs/clippie/tasks.md and .kiro/steering/* invariants verified.</div>
+            <div>✓ tests/agentLoop.test.ts · tests/perceptualHash.test.ts · tests/layeredAdapter.test.ts · tests/sidecarAdapter.test.ts</div>
+            <div class="term-ok">Test Files  11 passed (11)  |  Tests  54 passed (54)  |  macOS Swift AX/Vision + Windows .NET 8 UIA CI ✓</div>
+          </div>
+
+          <div class="closing-banner">
+            <div>
+              <strong style="font-size:20px">📎 Clippie</strong>
+              <span style="color:#cbd5e1;margin-left:10px">Dead software — back with a multimodal brain, real OS execution, and manners.</span>
+            </div>
+            <code style="color:#93c5fd;font-size:14px">github.com/buptweixin/clippie</code>
+          </div>
+        </div>
+      </section>
+
+      <!-- Bottom Chapter Caption Bar -->
+      <div class="caption-bar">
+        <div>
+          <span class="chapter-pill" id="chapter-num">1 / 6</span>
+          <strong id="chapter-caption">1997 Clippy interrupted with generic advice · 2026 chatbots force context-switching</strong>
+        </div>
+        <span style="color:#94a3b8;font-size:12px" id="chapter-timer">Clippie · Kiroween 2026</span>
+      </div>
+    </div>
+
+    <!-- Animated Pointer Cursor -->
+    <svg class="demo-cursor" id="demo-cursor" viewBox="0 0 24 24">
+      <path d="M4 2l15 10-7 1.8 3.8 7-2.7 1.4-3.8-7L4 19.5V2z" fill="#111827" stroke="#ffffff" stroke-width="1.8"/>
+    </svg>
+
+    <div id="demo-ready" data-ready="true" hidden></div>
+
+    <script>
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+      const api = async (path, body) => {
+        const res = await fetch(path, body
+          ? { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+          : undefined);
+        return res.json();
+      };
+
+      const layerProblem = document.getElementById("layer-problem");
+      const layerDesktop = document.getElementById("layer-desktop");
+      const layerKiro = document.getElementById("layer-kiro");
+      const docContent = document.getElementById("doc-content");
+      const docHeading = document.getElementById("doc-heading");
+      const editorTitle = document.getElementById("editor-window-title");
+      const editorTag = document.getElementById("editor-adapter-tag");
+      const winEditor = document.getElementById("win-editor");
+      const winPdf = document.getElementById("win-pdf");
+      const bubbleWrap = document.getElementById("bubble-wrap");
+      const bBadge = document.getElementById("b-badge");
+      const bRationale = document.getElementById("b-rationale");
+      const bArtifact = document.getElementById("b-artifact");
+      const bDegradation = document.getElementById("b-degradation");
+      const bNotice = document.getElementById("b-notice");
+      const bClassicToggle = document.getElementById("b-classic-toggle");
+      const bClassicBanner = document.getElementById("b-classic-banner");
+      const btnInsert = document.getElementById("btn-insert");
+      const btnAnother = document.getElementById("btn-another");
+      const btnDismiss = document.getElementById("btn-dismiss");
+      const cursorEl = document.getElementById("demo-cursor");
+
+      const telSignal = document.getElementById("tel-signal");
+      const telStuck = document.getElementById("tel-stuck");
+      const telOcr = document.getElementById("tel-ocr");
+      const telVlm = document.getElementById("tel-vlm");
+      const telWeight = document.getElementById("tel-weight");
+      const telSilence = document.getElementById("tel-silence");
+      const telMode = document.getElementById("tel-mode");
+      const chapterNum = document.getElementById("chapter-num");
+      const chapterCaption = document.getElementById("chapter-caption");
+
+      function showLayer(which) {
+        for (const el of [layerProblem, layerDesktop, layerKiro]) {
+          el.classList.toggle("active", el === which);
+        }
+      }
+
+      function setChapter(num, caption) {
+        chapterNum.textContent = `${num} / 6`;
+        chapterCaption.textContent = caption;
+      }
+
+      async function moveCursorTo(el, click = true) {
+        const rect = el.getBoundingClientRect();
+        cursorEl.classList.add("visible");
+        cursorEl.style.left = `${Math.round(rect.left + rect.width * 0.52)}px`;
+        cursorEl.style.top = `${Math.round(rect.top + rect.height * 0.55)}px`;
+        await sleep(520);
+        if (click) {
+          el.classList.add("btn-clicking");
+          await sleep(170);
+          el.classList.remove("btn-clicking");
+        }
+      }
+
+      async function typeAppend(base, addition, totalMs) {
+        const step = Math.max(16, Math.floor(totalMs / Math.max(1, addition.length)));
+        for (let i = 1; i <= addition.length; i++) {
+          docContent.textContent = base + addition.slice(0, i);
+          await sleep(step);
+        }
+      }
+
+      function renderOfferFromState(state, badgeLabel) {
+        if (!state.offer) return;
+        bBadge.textContent = badgeLabel;
+        bRationale.textContent = state.offer.artifact.rationale;
+        bArtifact.textContent = state.offer.artifact.text.trim();
+        bDegradation.hidden = !state.offer.artifact.degradationNote;
+        bDegradation.textContent = state.offer.artifact.degradationNote || "";
+        bNotice.hidden = true;
+        telVlm.textContent = String(state.modelCallCount);
+        bubbleWrap.classList.add("visible");
+      }
+
+      async function runFullDemo() {
+        const timingsRes = await api("/api/timings");
+        const scenes = timingsRes.scenes || [];
+        const dur = (idx, fallback) => (scenes[idx] ? scenes[idx].durationMs : fallback);
+        const cap = (idx, fallback) => (scenes[idx] ? scenes[idx].caption : fallback);
+
+        await api("/api/reset", {});
+        const specRes = await api("/api/spec-check");
+        if (specRes.output) {
+          document.getElementById("spec-check-line").textContent = specRes.output;
+        }
+
+        const t0 = performance.now();
+        const waitUntil = async (targetElapsedMs) => {
+          const rem = targetElapsedMs - (performance.now() - t0);
+          if (rem > 0) await sleep(rem);
+        };
+
+        let boundary = (timingsRes.leadInMs || 500);
+
+        // SCENE 1: Problem First
+        showLayer(layerProblem);
+        setChapter(1, cap(0, "1997 Clippy interrupted with generic advice · 2026 chatbots force context-switching"));
+        boundary += dur(0, 21000);
+        await waitUntil(boundary);
+
+        // SCENE 2: Restraint on normal editing
+        const s2Dur = dur(1, 13000);
+        const s2End = boundary + s2Dur;
+        showLayer(layerDesktop);
+        setChapter(2, cap(1, "Restraint first: local event stream only · 0 continuous capture · 0 LLM calls"));
+        const baseIntro = "2. Related Work\nRecent sparse attention kernels reduce quadratic memory cost on long sequences";
+        docContent.textContent = baseIntro;
+        await api("/api/events", { events: [{ kind: "edit", at: Date.now(), detail: "p2" }, { kind: "edit", at: Date.now(), detail: "p2" }] });
+        await typeAppend(baseIntro, ", while warp-level tiling improves hardware utilization.\n\n3. Method\n", Math.min(5500, s2Dur * 0.65));
+        telSignal.textContent = "edit×4 (steady flow)";
+        telStuck.textContent = "null — staying silent";
+        await waitUntil(s2End);
+        boundary = s2End;
+
+        // SCENE 3: Stuck moment -> Regenerate ("Another version") -> 1-click Insert
+        const s3Dur = dur(2, 26000);
+        const s3End = boundary + s3Dur;
+        setChapter(3, cap(2, "3× rewrites + 4× PDF switches → missing-transition (0.82) → 1-click L2 AX insert"));
+        const settledDoc = docContent.textContent;
+        await api("/api/set-doc", { text: settledDoc });
+
+        // Show 3 aborted rewrites + PDF focus bounce
+        const attempts = ["To solve this, we...", "Building on tiling...", "However, our method..."];
+        for (let i = 0; i < attempts.length; i++) {
+          docContent.textContent = settledDoc + attempts[i];
+          telSignal.textContent = `rewrite×${i + 1} + pdf-switch×${i + 2}`;
+          winEditor.classList.remove("focused-ring");
+          winPdf.classList.add("focused-ring");
+          await sleep(550);
+          winPdf.classList.remove("focused-ring");
+          winEditor.classList.add("focused-ring");
+          await sleep(450);
+        }
+        docContent.textContent = settledDoc;
+
+        telStuck.textContent = "missing-transition (0.82)";
+        telOcr.textContent = "Vision .fast 41ms · dHash 9c4e…11b2";
+        const st1 = await api("/api/events", {
+          appName: "Word",
+          events: [
+            { kind: "rewrite", at: 1, detail: "p3" },
+            { kind: "rewrite", at: 2, detail: "p3" },
+            { kind: "rewrite", at: 3, detail: "p3" },
+            { kind: "app-switch", at: 4 },
+            { kind: "app-switch", at: 5 },
+            { kind: "app-switch", at: 6 },
+            { kind: "app-switch", at: 7 },
+          ],
+        });
+        renderOfferFromState(st1, "Section bridge");
+        await sleep(2400);
+
+        // Click "Another version"
+        await moveCursorTo(btnAnother, true);
+        btnAnother.textContent = "Drafting…";
+        const st2 = await api("/api/respond", { choice: "another" });
+        await sleep(350);
+        btnAnother.textContent = "Another version";
+        renderOfferFromState(st2, "Section bridge · v2");
+        await sleep(2200);
+
+        // Click "Insert at cursor"
+        const insertedBridge = st2.offer ? st2.offer.artifact.text : "";
+        await moveCursorTo(btnInsert, true);
+        const stAfterInsert = await api("/api/respond", { choice: "insert" });
+        bubbleWrap.classList.remove("visible");
+        cursorEl.classList.remove("visible");
+        docContent.innerHTML = "";
+        const preSpan = document.createTextNode(settledDoc);
+        const hiSpan = document.createElement("span");
+        hiSpan.className = "inserted-highlight";
+        hiSpan.textContent = insertedBridge;
+        docContent.appendChild(preSpan);
+        docContent.appendChild(hiSpan);
+        document.getElementById("undo-token-status").textContent = "Snapshot Undo: ax:1 saved";
+        void stAfterInsert;
+        await waitUntil(s3End);
+        boundary = s3End;
+
+        // SCENE 4: Outcome learning (kept -> weight 1.10) + 3 dismissals -> 30m silence
+        const s4Dur = dur(3, 22000);
+        const s4End = boundary + s4Dur;
+        setChapter(4, cap(3, "Kept draft boosts weight (1.00 → 1.10) · 3 consecutive dismissals trigger 30m silence"));
+        const fullBeforeCont = settledDoc + insertedBridge;
+        await typeAppend(fullBeforeCont, "we formulate a boundary-aware block schedule.", 2200);
+        const keptState = await api("/api/outcome", { undoToken: "mock:1", outcome: "kept" });
+        telWeight.textContent = `${keptState.stats.missingTransition.weight.toFixed(2)} ↑ (kept)`;
+        await sleep(1600);
+
+        // 3 consecutive dismissals on blank-page
+        for (let d = 1; d <= 3; d++) {
+          telSignal.textContent = `idle 20s (attempt ${d}/3)`;
+          telStuck.textContent = "blank-page (0.75)";
+          const stBlank = await api("/api/events", {
+            appName: "Word",
+            events: [{ kind: "idle", at: Date.now(), detail: "20000" }],
+          });
+          renderOfferFromState(stBlank, "Starter outline");
+          await sleep(750);
+          await moveCursorTo(btnDismiss, true);
+          const afterDismiss = await api("/api/respond", { choice: "dismiss" });
+          telSilence.textContent = afterDismiss.stats.blankPageSilenced
+            ? "SILENCED 30m"
+            : `wt ${afterDismiss.stats.blankPage.weight.toFixed(2)} (${d}/3)`;
+          telSilence.className = afterDismiss.stats.blankPageSilenced ? "warn" : "";
+          if (afterDismiss.notice) {
+            bArtifact.textContent = "Okay — backing off.";
+            bNotice.hidden = false;
+            bNotice.textContent = afterDismiss.notice.message;
+            await sleep(4500);
+          }
+          bubbleWrap.classList.remove("visible");
+        }
+        cursorEl.classList.remove("visible");
+        await waitUntil(s4End);
+        boundary = s4End;
+
+        // SCENE 5: Honest L2 -> L3 paste degradation
+        const s5Dur = dur(4, 15000);
+        const s5End = boundary + s5Dur;
+        setChapter(5, cap(4, "LayeredDocumentAdapter: L2 blocked → L3 paste fallback with clipboard restore"));
+        document.getElementById("menubar-app").textContent = "AdminConsole (Elevated)";
+        editorTitle.textContent = "release_notes.txt — Elevated Console (UIPI)";
+        editorTag.textContent = "L3 · Clipboard Paste Fallback";
+        editorTag.classList.add("elevated");
+        docHeading.textContent = "Elevated Release Notes (Read-Only Accessibility Tree)";
+        docContent.textContent = "Benchmark summary:\n";
+        telStuck.textContent = "needs-summary (0.65)";
+
+        bBadge.textContent = "Passage summary";
+        bRationale.textContent = "Concise synthesis of the dwelled reference passage.";
+        bArtifact.textContent = "In summary, Dao et al. (2024) achieve a 2x–3x attention speedup via SRAM tiling.";
+        bNotice.hidden = true;
+        bDegradation.hidden = false;
+        bDegradation.textContent = "Will insert by paste — this window doesn't expose a writable accessibility tree.";
+        bubbleWrap.classList.add("visible");
+        await sleep(2200);
+
+        await moveCursorTo(btnInsert, true);
+        const degRes = await api("/api/degraded-insert", {
+          initialText: "Benchmark summary:\n",
+          insertText: "In summary, Dao et al. (2024) achieve a 2x–3x attention speedup via SRAM tiling.",
+        });
+        docContent.textContent = degRes.updatedText;
+        bDegradation.textContent = degRes.result.degradationNote;
+        cursorEl.classList.remove("visible");
+        await waitUntil(s5End);
+        boundary = s5End;
+
+        // SCENE 6: Quick '97 Classic Mode + Kiro Architecture Close
+        const s6Dur = dur(5, 22000);
+        const s6End = boundary + s6Dur;
+        setChapter(6, cap(5, "Built with .kiro/specs, .kiro/steering & executable .kiro/hooks · 54/54 CI tests passing"));
+        await moveCursorTo(bClassicToggle, true);
+        bClassicToggle.checked = true;
+        bClassicBanner.hidden = false;
+        telMode.textContent = "Mode: '97 Classic!";
+        await api("/api/classic", { enabled: true });
+        await sleep(2800);
+        bClassicToggle.checked = false;
+        bClassicBanner.hidden = true;
+        await api("/api/classic", { enabled: false });
+        bubbleWrap.classList.remove("visible");
+        cursorEl.classList.remove("visible");
+
+        showLayer(layerKiro);
+        await waitUntil(s6End);
+
+        const doneEl = document.createElement("div");
+        doneEl.id = "demo-complete";
+        doneEl.textContent = "done";
+        document.body.appendChild(doneEl);
+      }
+
+      window.startClippieDemo = runFullDemo;
+      if (new URLSearchParams(window.location.search).get("autostart") === "1") {
+        setTimeout(() => { void runFullDemo(); }, 120);
+      }
+    </script>
+  </body>
+</html>
