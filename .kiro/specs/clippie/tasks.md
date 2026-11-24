@@ -26,6 +26,6 @@
 
 ## Milestone 4 — Submission
 - [x] Classic mode toggle (`src/agent/loop.ts`, `src/main/main.ts`, `src/renderer/bubble.ts`)
-- [ ] Demo video < 3 min per demo/storyboard.md, public YouTube
+- [x] Demo video < 3 min per `demo/storyboard.md`, public YouTube (https://youtu.be/ctkqzHMfO-E)
 - [x] Devpost submission text (`docs/devpost-submission.md`, `docs/kiro-usage.md`)
 - [x] Launch post (`docs/launch-post.md`)

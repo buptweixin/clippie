@@ -12,8 +12,9 @@ keep or delete. Not a chatbot in the corner — an agent loop that acts.
 Building it with Devin on the hard parts: accessibility APIs, OS-level
 insertion, and macOS/Windows permissions.
 
-Open source repo + demo teaser 👇
-https://github.com/buptweixin/clippie
+Open source repo + 2-min live demo 👇
+Repo: https://github.com/buptweixin/clippie
+Demo: https://youtu.be/ctkqzHMfO-E
 
 ---
 

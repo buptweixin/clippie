@@ -11,6 +11,8 @@ multimodal LLM that can see and understand what's on your screen and in your
 document, and — unlike the original — knows when to act, when to offer, and
 when to shut up.
 
+**Demo Video (< 3 min, 1080p):** [https://youtu.be/ctkqzHMfO-E](https://youtu.be/ctkqzHMfO-E)
+
 ## What it actually does
 
 Clippie is not a chatbot in the corner. It runs a closed agent loop:

@@ -1,6 +1,9 @@
 # Devpost Submission — Clippie (Kiroween 2026 · Resurrection Track)
 
 > *Dead software, resurrected with a multimodal brain, layered OS execution, and manners.*
+>
+> - **Demo Video (Public YouTube):** https://youtu.be/ctkqzHMfO-E
+> - **GitHub Repository (MIT, `.kiro/` included):** https://github.com/buptweixin/clippie
 
 ---
 
